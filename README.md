@@ -169,16 +169,20 @@ Project-FtM/
 └── pyproject.toml          # Python package config
 ```
 
-## Provenance
+## Provenance & Heritage
+
+Emet's core infrastructure is derived from [**Project-Kintsugi**](https://github.com/Liberation-Labs-THCoalition/Project-Kintsugi), a domain-agnostic self-repairing agentic harness. The `kintsugi_engine/` directory, memory architecture (CMA), BDI cognition, EFE active inference routing, security layer, and plugin system transfer directly — they are intentionally domain-agnostic and work unchanged. The journalism-specific layers (skill chips, FtM data spine, Aleph integration, ethics constitution) are new.
+
+The name "Emet" (אמת) is Hebrew for "truth." In Jewish folklore, it is the word inscribed on the forehead of the Golem — a construct animated to protect its community.
 
 Built on:
-- **Project-Kintsugi** — Self-repairing agentic harness (7 layers, BDI cognition, EFE routing)
-- **FollowTheMoney** — OCCRP's data model for organized crime and corruption investigations
-- **Aleph** — OCCRP's investigative data platform (search, cross-reference, ingest)
-- **OpenSanctions / yente** — 325+ sanctions and PEP lists
-- **OpenCorporates** — 200M+ companies from 145+ jurisdictions
-- **ICIJ Offshore Leaks** — 810K+ offshore entities
-- **GLEIF** — Global Legal Entity Identifier index
+- [**Project-Kintsugi**](https://github.com/Liberation-Labs-THCoalition/Project-Kintsugi) — Self-repairing agentic harness (7 layers, BDI cognition, EFE routing)
+- [**FollowTheMoney**](https://followthemoney.tech/) — OCCRP's data model for organized crime and corruption investigations
+- [**Aleph**](https://github.com/alephdata/aleph) — OCCRP's investigative data platform (search, cross-reference, ingest)
+- [**OpenSanctions / yente**](https://www.opensanctions.org/) — 325+ sanctions and PEP lists
+- [**OpenCorporates**](https://opencorporates.com/) — 200M+ companies from 145+ jurisdictions
+- [**ICIJ Offshore Leaks**](https://offshoreleaks.icij.org/) — 810K+ offshore entities
+- [**GLEIF**](https://www.gleif.org/) — Global Legal Entity Identifier index
 
 ## License
 
