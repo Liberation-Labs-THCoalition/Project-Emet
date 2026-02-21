@@ -798,6 +798,254 @@ alembic upgrade head
 
 ---
 
+## 14. LLM Provider Configuration
+
+Emet uses a provider-agnostic LLM layer with cascading fallback:
+
+### Provider Chain
+
+1. **Ollama** (default) — runs locally, no API key needed, free
+2. **Anthropic Claude** — cloud fallback when Ollama unavailable
+3. **Stub** — canned responses for testing (automatic when both above fail)
+
+### Setting Up Ollama
+
+```bash
+# Install Ollama (https://ollama.ai)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull recommended models
+ollama pull llama3.2:3b     # fast tier (intent classification)
+ollama pull mistral:7b      # balanced tier (analysis)
+ollama pull llama3.1:70b    # powerful tier (synthesis) — requires 48GB+ RAM
+
+# Verify
+ollama list
+```
+
+### Configuration
+
+```bash
+# .env
+LLM_PROVIDER=ollama
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODELS=llama3.2:3b,mistral:7b,llama3.1:70b
+LLM_FALLBACK_ENABLED=true    # Cascade to Anthropic on failure
+ANTHROPIC_API_KEY=sk-...      # Only needed for fallback
+```
+
+### Using in Code
+
+```python
+from emet.cognition.llm_factory import get_llm_client
+
+client = get_llm_client()  # Returns configured client with fallback
+response = await client.complete("Analyze this entity...", tier="balanced")
+print(response.text, response.model, response.cost_usd)
+```
+
+## 15. Graph Analytics
+
+The graph analytics engine converts FtM entities into a NetworkX graph and runs investigative algorithms.
+
+### Building a Graph
+
+```python
+from emet.graph.engine import GraphEngine
+
+engine = GraphEngine()
+
+# From a list of FtM entity dicts
+result = engine.build_from_entities(entities)
+
+# From an Aleph collection
+result = await engine.build_from_aleph(collection_id="abc123")
+
+# From federated search
+result = await engine.build_from_federation("Viktor Petrov", entity_type="Person")
+```
+
+### Running Algorithms
+
+```python
+analysis = result.analysis
+
+# Who are the intermediaries?
+brokers = analysis.find_brokers(top_n=5)
+for b in brokers:
+    print(f"{b.name}: betweenness={b.betweenness:.3f}")
+
+# Circular ownership detection
+cycles = analysis.find_circular_ownership(max_length=6)
+for c in cycles:
+    print(f"Cycle: {' → '.join(e['name'] for e in c.cycle_entities)}")
+    print(f"  Risk: {c.risk_score:.2f} — {c.explanation}")
+
+# Shell company scoring
+score = analysis.shell_company_topology_score("entity-id")
+print(f"Shell score: {score.score:.2f} ({score.risk_level})")
+print(f"  Factors: {score.factor_breakdown}")
+
+# Key players (PageRank + degree)
+players = analysis.find_key_players(top_n=10)
+
+# Hidden paths between entities
+paths = analysis.find_hidden_connections("entity-a", "entity-b")
+
+# Community detection
+communities = analysis.find_communities()
+
+# Structural anomalies
+anomalies = analysis.find_structural_anomalies()
+```
+
+### Exporting for Visualization
+
+```python
+exporter = result.exporter
+
+# For Gephi
+exporter.to_gexf("network.gexf")
+
+# For spreadsheet analysis
+exporter.to_csv_files("./output/")
+
+# For web visualization
+d3_json = exporter.to_d3_json()       # D3.js force-directed
+cyto_json = exporter.to_cytoscape_json()  # Cytoscape.js
+```
+
+## 16. Export & Reporting
+
+### Investigation Reports
+
+```python
+from emet.export.markdown import MarkdownReport
+
+reporter = MarkdownReport()
+
+# From GraphEngine findings
+md = reporter.generate_from_engine_result(
+    title="Investigation: Volkov Network",
+    findings=engine_result_findings_dict,
+    summary="Multi-jurisdiction corporate network analysis.",
+)
+
+# Save
+Path("report.md").write_text(md)
+# Convert to PDF: pandoc report.md -o report.pdf
+```
+
+### FtM Bundle Export (Aleph Re-import)
+
+```python
+from emet.export.ftm_bundle import FtMBundleExporter
+
+exporter = FtMBundleExporter(include_provenance=True)
+
+# JSONL for Aleph ingest
+exporter.export_jsonl(entities, "investigation.ftm.json")
+
+# Zip bundle with manifest
+exporter.export_zip(entities, "investigation.zip", investigation_name="Volkov")
+```
+
+### Timeline Analysis
+
+```python
+from emet.export.timeline import TimelineAnalyzer
+
+analyzer = TimelineAnalyzer(burst_window_days=7, burst_threshold=3)
+events = analyzer.extract_events(entities)
+patterns = analyzer.detect_patterns(entities)
+
+for p in patterns:
+    if p.severity in ("medium", "high"):
+        print(f"⚠️ {p.pattern_type}: {p.explanation} (score={p.score:.2f})")
+```
+
+## 17. Change Detection & Monitoring
+
+Monitor registered queries for sanctions listings, new entities, and property changes.
+
+```python
+from emet.monitoring import ChangeDetector
+
+detector = ChangeDetector(storage_dir=".emet_monitoring")
+
+# Register queries to monitor
+detector.register_query("Viktor Petrov", entity_type="Person")
+detector.register_query("Sunrise Holdings", entity_type="Company", jurisdictions=["VG", "CY"])
+
+# Run checks (calls federated search, compares to previous snapshot)
+alerts = await detector.check_all()
+
+for alert in alerts:
+    print(alert.summary)
+    # "⚠️ NEW SANCTION: Viktor Petrov listed in opensanctions"
+    # "New entity: Sunrise Holdings Ltd (Company) found in opencorporates"
+    # "Changed: Sunrise Holdings — country updated"
+```
+
+### Alert Types
+
+| Type | Severity | Description |
+|------|----------|-------------|
+| `new_sanction` | high | Entity appeared in sanctions/PEP lists |
+| `new_entity` | medium | New entity matching a monitored query |
+| `changed_property` | low | Property value changed on existing entity |
+| `removed_entity` | low | Entity no longer appears in source |
+
+## 18. Blockchain Investigation
+
+```python
+from emet.ftm.external.blockchain import EtherscanClient, BlockstreamClient
+
+# Ethereum
+eth = EtherscanClient(api_key="your-key")
+balance = await eth.get_balance("0x...")
+txs = await eth.get_transactions("0x...", max_results=50)
+counterparties = await eth.get_counterparties("0x...")
+ftm_entities = await eth.address_to_ftm("0x...")  # Convert to FtM
+
+# Bitcoin
+btc = BlockstreamClient()
+balance = await btc.get_balance("bc1q...")
+txs = await btc.get_transactions("bc1q...")
+```
+
+## 19. Document Source Integration
+
+Emet ingests processed results from established document tools — it does not perform OCR itself.
+
+### Datashare (ICIJ)
+
+```python
+from emet.ftm.external.document_sources import DatashareClient
+
+ds = DatashareClient(host="http://localhost:8080", project="local-datashare")
+
+# Search documents
+docs = await ds.search("offshore accounts", size=20)
+
+# Get NER entities extracted by Datashare
+ner_results = await ds.get_named_entities(doc_id="...")
+
+# Full pipeline: search → convert to FtM (docs + NER entities + mention links)
+ftm_entities = await ds.search_to_ftm("offshore accounts", include_entities=True)
+```
+
+### DocumentCloud (MuckRock/IRE)
+
+```python
+from emet.ftm.external.document_sources import DocumentCloudClient
+
+dc = DocumentCloudClient()
+docs = await dc.search("EPA enforcement action")
+ftm_entities = await dc.search_to_ftm("EPA enforcement action")
+text = await dc.get_text(doc_id=12345)
+```
+
 ## Quick Reference Card
 
 ```
@@ -828,4 +1076,29 @@ await chip.handle(SkillRequest(intent="trace_ownership", parameters={"entity_nam
 # Verify a claim
 chip = get_chip("verification")
 await chip.handle(SkillRequest(intent="fact_check", parameters={"claim": "...", "evidence": [...]}), ctx)
+
+# --- New: Graph analytics ---
+from emet.graph.engine import GraphEngine
+result = GraphEngine().build_from_entities(entities)
+cycles = result.analysis.find_circular_ownership()
+result.exporter.to_gexf("network.gexf")
+
+# --- New: Federated search ---
+from emet.ftm.external.federation import FederatedSearch
+results = await FederatedSearch().search_entity("Viktor Petrov", entity_type="Person")
+
+# --- New: Generate investigation report ---
+from emet.export.markdown import MarkdownReport
+md = MarkdownReport().generate_from_engine_result("Title", findings, summary="...")
+
+# --- New: Monitor for changes ---
+from emet.monitoring import ChangeDetector
+detector = ChangeDetector()
+detector.register_query("Viktor Petrov")
+alerts = await detector.check_all()
+
+# --- New: LLM analysis with evidence ---
+from emet.skills.llm_integration import SkillLLMHelper
+helper = SkillLLMHelper(llm_client, domain="corporate_analysis")
+result = await helper.analyze("Assess this structure", evidence=entities)
 ```

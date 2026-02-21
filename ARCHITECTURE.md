@@ -8,7 +8,7 @@ It orchestrates a swarm of specialized skill chips (agents) that collaboratively
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│                    Emet                            │
+│                         Emet                              │
 │                                                           │
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │              Orchestrator (Supervisor)               │  │
@@ -19,7 +19,9 @@ It orchestrates a swarm of specialized skill chips (agents) that collaboratively
 │  │   Cognition Layer   │  │    Governance Layer         │  │
 │  │  • EFE Calculator   │  │  • VALUES.json constitution │  │
 │  │  • Model Router     │  │  • Consensus Gates          │  │
-│  │  • LLM Client       │  │  • OTel audit trail         │  │
+│  │  • LLM Abstraction  │  │  • OTel audit trail         │  │
+│  │    Ollama → Claude   │  │                             │  │
+│  │    → Stub (cascade)  │  │                             │  │
 │  └──────────────┬──────┘  └───────────┬────────────────┘  │
 │                 │                      │                   │
 │  ┌──────────────▼──────────────────────▼───────────────┐  │
@@ -35,12 +37,27 @@ It orchestrates a swarm of specialized skill chips (agents) that collaboratively
 │  └─────────────────────┘  └────────────────────────────┘  │
 │                                                           │
 │  ┌─────────────────────────────────────────────────────┐  │
-│  │              FtM Data Spine (NEW)                    │  │
-│  │   Aleph API • FtM entities • External sources       │  │
+│  │              FtM Data Spine                          │  │
+│  │   Aleph API • FtM entities • Federation • Blockchain│  │
 │  └──────────────┬──────────────────────┬───────────────┘  │
 │                 │                      │                   │
+│  ┌──────────────▼──────┐  ┌───────────▼────────────────┐  │
+│  │   Graph Analytics   │  │    Export & Reporting       │  │
+│  │  • NetworkX engine  │  │  • Markdown reports         │  │
+│  │  • 7 algorithms     │  │  • FtM bundles (Aleph)     │  │
+│  │  • Multi-format     │  │  • Timeline analysis        │  │
+│  │    export           │  │  • GEXF/CSV/D3/Cytoscape   │  │
+│  └──────────────┬──────┘  └───────────┬────────────────┘  │
+│                 │                      │                   │
 │  ┌──────────────▼──────────────────────▼───────────────┐  │
+│  │    Monitoring: ChangeDetector + SnapshotDiffer       │  │
+│  │    Sanctions alerts • Property changes • New entities│  │
+│  └─────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─────────────────────────────────────────────────────┐  │
 │  │              Skill Chips (15 agents)                 │  │
+│  │   + SkillLLMHelper (structured output, evidence     │  │
+│  │     grounding, 6 methodology prompts, token tracking)│  │
 │  │                                                     │  │
 │  │  Investigation:  entity_search, cross_reference,    │  │
 │  │    document_analysis, nlp_extraction,               │  │
@@ -174,20 +191,52 @@ Skill Chip (handle request)
     │       ▼
     │    FtM Entities
     │
-    ├──▶ External Sources (OpenSanctions / OpenCorporates / ICIJ / GLEIF)
+    ├──▶ Federated Search (parallel async fan-out)
+    │    ├── OpenSanctions / yente
+    │    ├── OpenCorporates
+    │    ├── ICIJ Offshore Leaks
+    │    ├── GLEIF
+    │    └── (dedup + cache + rate limit)
     │       │
     │       ▼
-    │    FtM Entities (converted)
+    │    FtM Entities (converted + provenance)
     │
-    ├──▶ NLP Pipeline (spaCy / transformers)
+    ├──▶ Blockchain (Etherscan ETH / Blockstream BTC)
     │       │
     │       ▼
-    │    Extracted Entities + Relationships
+    │    FtM Entities (addresses, transactions)
     │
-    └──▶ Network Analysis (NetworkX / igraph)
-            │
-            ▼
-         Graph Metrics + Visualizations
+    ├──▶ Document Sources (Datashare / DocumentCloud)
+    │       │
+    │       ▼
+    │    FtM Document + NER entities + Mention links
+    │
+    ├──▶ Graph Analytics Engine (NetworkX)
+    │    ├── FtM entities → MultiDiGraph
+    │    ├── Algorithms: brokers, communities, cycles,
+    │    │   key players, hidden paths, anomalies, shell score
+    │    └── Export: GEXF, GraphML, CSV, D3, Cytoscape
+    │       │
+    │       ▼
+    │    Graph findings + export files
+    │
+    ├──▶ LLM Analysis (via SkillLLMHelper)
+    │    ├── Ollama (local, default)
+    │    ├── → Anthropic (cloud fallback)
+    │    └── → Stub (test fallback)
+    │       │
+    │       ▼
+    │    Structured findings (JSON) + token tracking
+    │
+    ├──▶ Timeline Analysis
+    │       │
+    │       ▼
+    │    Temporal events + burst/coincidence patterns
+    │
+    └──▶ Export Pipeline
+         ├── Markdown investigation report
+         ├── FtM bundle (JSONL/zip for Aleph re-import)
+         └── Graph visualization files
     │
     ▼
 SkillResponse
@@ -203,6 +252,15 @@ Governance Check (consensus gate if required)
     │
     ▼
 Response to User
+
+    ┌──────────────────────────────────┐
+    │  Background: Monitoring Loop     │
+    │  ChangeDetector.check_all()      │
+    │  → Federated search snapshots    │
+    │  → SnapshotDiffer                │
+    │  → ChangeAlert (new entity,      │
+    │    sanctions, property changes)   │
+    └──────────────────────────────────┘
 ```
 
 ## Modules Transferred from Kintsugi (unchanged)
@@ -234,4 +292,80 @@ These modules transfer verbatim — the Kintsugi architecture is domain-agnostic
 - `ftm/data_spine.py` — FtM entity factory, domain classification, investigation wrappers
 - `ftm/aleph_client.py` — Async Aleph REST API client
 - `ftm/external/adapters.py` — OpenSanctions, OpenCorporates, ICIJ, GLEIF clients
-- `skills/` — 15 journalism skill chips (replacing 22 nonprofit chips)
+
+## New Subsystems (Sprints 1–9)
+
+### LLM Abstraction Layer (`cognition/llm_*`)
+
+Provider-agnostic LLM interface with cascading fallback:
+
+- `llm_base.py`: `LLMClient` ABC with `complete`, `classify_intent`, `generate_content`, `extract_entities` methods. `LLMResponse` dataclass with text, model, provider, token counts, cost.
+- `llm_ollama.py`: Local Ollama client. Tier mapping: fast→llama3.2:3b, balanced→mistral:7b, powerful→llama3.1:70b.
+- `llm_anthropic.py`: Anthropic Claude client. Cloud fallback when local unavailable.
+- `llm_stub.py`: Canned-response client with `call_log` for test assertions.
+- `llm_factory.py`: `get_llm_client()` factory reading `LLM_PROVIDER` config. `FallbackLLMClient` wraps a chain (Ollama → Anthropic → Stub) and cascades on failure.
+
+### Data Federation (`ftm/external/`)
+
+Parallel async search across multiple data sources:
+
+- `converters.py`: FtM converters for yente, OpenCorporates, ICIJ, GLEIF — normalizing each source's response format into standard FtM entities with provenance tracking.
+- `federation.py`: `FederatedSearch` with async fan-out to all sources simultaneously. Deduplication by entity name/ID similarity. Rate limiting and response caching per source. Graceful degradation (partial results if some sources fail).
+- `rate_limit.py`: `TokenBucketLimiter` (per-second), `MonthlyCounter` (budget caps), `ResponseCache` (TTL-based in-memory).
+
+### Blockchain Investigation (`ftm/external/blockchain.py`)
+
+- `EtherscanClient`: ETH address validation, balance lookup, transaction history, counterparty analysis, FtM entity conversion.
+- `BlockstreamClient`: BTC address validation, balance, transaction history.
+- Automatic address type detection (ETH vs BTC by format).
+
+### Graph Analytics Engine (`graph/`)
+
+NetworkX-based investigative graph analysis:
+
+- `ftm_loader.py`: `FtMGraphLoader` converts FtM entity lists to NetworkX MultiDiGraph. Handles all 11 FtM relationship schemas. Edge weighting by relationship strength (Ownership=1.0 → UnknownLink=0.3). Safety cap at 50K nodes.
+- `algorithms.py`: `InvestigativeAnalysis` with 7 algorithms:
+  - `find_brokers()`: Betweenness centrality for intermediary detection
+  - `find_communities()`: Louvain (or label propagation) clustering
+  - `find_circular_ownership()`: Johnson's algorithm for ownership cycles
+  - `find_key_players()`: PageRank + degree centrality composite
+  - `find_hidden_connections()`: All shortest paths between entities
+  - `find_structural_anomalies()`: Fan-out, bridge nodes, missing officers
+  - `shell_company_topology_score()`: Composite 0–1 risk from graph signals
+- `exporters.py`: `GraphExporter` for GEXF (Gephi), GraphML, Cytoscape JSON, D3 JSON, CSV.
+- `engine.py`: `GraphEngine` orchestrating the full workflow — build from entities, Aleph, or federation → analysis → export.
+
+### Export & Reporting (`export/`)
+
+Investigation output pipeline:
+
+- `markdown.py`: `MarkdownReport` generates structured Markdown with executive summary, entity inventory (grouped by schema), network analysis findings, timeline, data sources, methodology & limitations.
+- `ftm_bundle.py`: `FtMBundleExporter` for Aleph re-import. JSONL, zip bundle with manifest.json, bytes for API responses. Enables round-trip: investigate in Emet → export → import into Aleph.
+- `timeline.py`: `TimelineAnalyzer` extracts dated events from 11 FtM date properties, detects temporal patterns:
+  - Burst detection: N entities created within M days (shell company indicator)
+  - Coincidence detection: incorporation timing near payment timing
+
+### Monitoring (`monitoring/`)
+
+Change detection for ongoing investigations:
+
+- `ChangeAlert`: Structured alert with type (new_entity, changed_property, new_sanction, removed_entity), severity, provenance.
+- `SnapshotDiffer`: Compares two entity snapshots to detect all change types. Automatic sanctions detection from schema/topic fields.
+- `ChangeDetector`: Persistent monitoring with JSON file storage, query registration, scheduled checks against federated search, snapshot management.
+
+### Document Ingestion (`ftm/external/document_sources.py`)
+
+Adapters for established document processing tools (Emet does not perform OCR — it ingests results from tools that do):
+
+- `DatashareClient`: Queries self-hosted ICIJ Datashare instances. Search, get_document, get_named_entities, search_to_ftm. NER results converted to Person/Organization FtM entities linked to source documents via Mention entities.
+- `DocumentCloudClient`: Queries MuckRock/IRE DocumentCloud API. Search, get_document, get_text, search_to_ftm, health_check.
+
+### Skill Chip LLM Integration (`skills/llm_integration.py`)
+
+Shared LLM infrastructure for skill chips:
+
+- `SkillLLMHelper`: Wraps LLM client with investigative methodology prompts, evidence grounding (FtM entity formatting), structured JSON output parsing, token/cost tracking.
+- 6 methodology-encoding system prompts: `investigative_base`, `entity_extraction`, `corporate_analysis`, `story_development`, `verification`, `financial_analysis`.
+- High-level methods: `analyze`, `analyze_structured`, `extract_entities`, `classify_risk`, `generate_narrative`, `verify_claims`.
+- `parse_json_response()`: Robust parser handling markdown fences, preamble text, embedded JSON.
+- `TokenUsage`: Cross-workflow tracking of input/output tokens, cost, and per-call breakdown.

@@ -10,11 +10,17 @@ Emet orchestrates 15 specialized AI agents ("skill chips") that collaboratively 
 
 **Core capabilities:**
 - Search entities across OCCRP Aleph, OpenSanctions, OpenCorporates, ICIJ Offshore Leaks, and GLEIF
+- Federated search with parallel async fan-out, deduplication, rate limiting, and caching
 - Cross-reference entities between datasets with automated sanctions screening
-- Ingest and analyze documents (OCR, NER, relationship extraction)
-- Build and analyze network graphs of corporate/financial relationships
-- Trace beneficial ownership through layered corporate structures
-- Monitor watchlists and receive alerts on entity changes
+- Graph analytics engine (NetworkX): circular ownership, broker detection, community clustering, shell company scoring, key player ranking, hidden connection tracing, structural anomaly detection
+- Export to Gephi (GEXF), GraphML, CSV, D3.js, and Cytoscape.js for visualization
+- Blockchain investigation: Ethereum (Etherscan) and Bitcoin (Blockstream) address analysis
+- Document ingestion from Datashare (ICIJ) and DocumentCloud (MuckRock/IRE) with NER→FtM conversion
+- Temporal pattern detection: burst analysis, coincidence detection across entity timelines
+- Investigation reports in Markdown with executive summary, entity inventory, and network findings
+- FtM bundle export (JSONL/zip) for round-trip Aleph re-import
+- Change detection and monitoring: snapshot diffing, sanctions alerts, property change tracking
+- LLM-powered analysis via local Ollama (default) with Anthropic Claude fallback
 - Verify findings and assess source reliability before publication
 
 **Specialized investigation domains:**
@@ -32,11 +38,15 @@ Seven-layer architecture inherited from Kintsugi, adapted for journalism:
 |-------|-----------|--------|
 | 1 | **Orchestrator** — keyword/EFE/LLM routing to 14 domains | Adapted |
 | 2 | **Cognition (EFE)** — 12 investigation-specific weight profiles | Adapted |
+| 2a | **LLM Abstraction** — Ollama (local) → Anthropic (cloud) → Stub (test) with cascading fallback | **New** |
 | 3 | **Kintsugi Engine** — shadow verification, self-repair | Unchanged |
 | 4 | **Memory (CMA)** — investigation context, BDI state | Unchanged |
 | 5 | **Security** — Intent Capsules, Shield, Monitor | Unchanged |
 | 6 | **Governance** — VALUES.json, Consensus Gates, OTel | Adapted |
-| 7 | **FtM Data Spine** — Aleph API, entity factory, external sources | **New** |
+| 7 | **FtM Data Spine** — Aleph API, entity factory, federated search, blockchain | **New** |
+| 8 | **Graph Analytics** — NetworkX engine, 7 investigative algorithms, multi-format export | **New** |
+| 9 | **Export & Reporting** — Markdown reports, FtM bundles, temporal analysis | **New** |
+| 10 | **Monitoring** — Change detection, snapshot diffing, sanctions alerts | **New** |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for full technical documentation.
 
@@ -84,9 +94,23 @@ ALEPH_API_KEY=your-api-key
 OPENSANCTIONS_API_KEY=your-key
 OPENCORPORATES_TOKEN=your-token
 
-# LLM providers
-ANTHROPIC_API_KEY=your-key
-OPENAI_API_KEY=your-key
+# LLM providers (cascading: Ollama → Anthropic → Stub)
+LLM_PROVIDER=ollama              # ollama | anthropic | stub
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODELS=llama3.2:3b,mistral:7b,llama3.1:70b  # fast,balanced,powerful
+LLM_FALLBACK_ENABLED=true        # Fall through to next provider on failure
+ANTHROPIC_API_KEY=your-key        # Only needed if using Anthropic
+
+# Blockchain (optional, free tiers)
+ETHERSCAN_API_KEY=your-key        # 5 req/sec free tier
+# Blockstream BTC API requires no key
+
+# Document sources (optional)
+DATASHARE_HOST=http://localhost:8080
+DATASHARE_PROJECT=local-datashare
+
+# Monitoring
+EMET_MONITORING_DIR=.emet_monitoring  # Snapshot storage
 
 # Database
 DATABASE_URL=postgresql://ftm:ftm@localhost:5432/emet
@@ -138,36 +162,82 @@ All agent actions are governed by [VALUES.json](VALUES.json), which implements t
 ```
 Project-Emet/
 ├── emet/
-│   ├── cognition/          # EFE calculator, orchestrator, model router
-│   ├── kintsugi_engine/    # Self-repairing core (from Kintsugi)
-│   ├── memory/             # CMA pipeline (from Kintsugi)
-│   ├── security/           # Intent Capsules, Shield, Monitor
-│   ├── governance/         # Consensus gates, OTel, Bloom
-│   ├── bdi/                # Beliefs-Desires-Intentions models
-│   ├── plugins/            # Plugin SDK and loader
-│   ├── multitenancy/       # Per-investigation isolation
-│   ├── ftm/                # FollowTheMoney integration layer
-│   │   ├── data_spine.py   # FtM entity factory + domain classification
-│   │   ├── aleph_client.py # Async Aleph REST API client
-│   │   └── external/       # OpenSanctions, OpenCorporates, ICIJ, GLEIF
-│   ├── skills/             # Investigation skill chips
-│   │   ├── base.py         # BaseSkillChip + domain enums
-│   │   ├── investigation/  # Core investigation agents
-│   │   ├── specialized/    # Domain-specific agents
-│   │   ├── monitoring/     # Continuous monitoring
-│   │   ├── publication/    # Verification + story development
-│   │   └── resources/      # Training and reference
-│   ├── models/             # Database models
-│   ├── api/                # FastAPI routes
-│   ├── config/             # Configuration
-│   └── db.py               # Database connection
-├── migrations/             # Alembic database migrations
-├── tests/                  # Test suite
-├── VALUES.json             # Journalism ethics constitution
-├── ARCHITECTURE.md         # Technical architecture docs
-├── docker-compose.yml      # Docker services
-└── pyproject.toml          # Python package config
+│   ├── cognition/              # LLM abstraction + routing
+│   │   ├── llm_base.py         # LLMClient ABC, LLMResponse dataclass
+│   │   ├── llm_ollama.py       # Local Ollama client (default)
+│   │   ├── llm_anthropic.py    # Anthropic Claude client (fallback)
+│   │   ├── llm_stub.py         # Canned-response client (testing)
+│   │   ├── llm_factory.py      # Provider factory + FallbackLLMClient
+│   │   ├── efe.py              # EFE active inference calculator
+│   │   ├── orchestrator.py     # Keyword/EFE/LLM routing
+│   │   └── model_router.py     # Tier-to-model mapping
+│   ├── kintsugi_engine/        # Self-repairing core (from Kintsugi)
+│   ├── memory/                 # CMA pipeline (from Kintsugi)
+│   ├── security/               # Intent Capsules, Shield, Monitor
+│   ├── governance/             # Consensus gates, OTel, Bloom
+│   ├── bdi/                    # Beliefs-Desires-Intentions models
+│   ├── plugins/                # Plugin SDK and loader
+│   ├── multitenancy/           # Per-investigation isolation
+│   ├── ftm/                    # FollowTheMoney integration layer
+│   │   ├── data_spine.py       # FtM entity factory + domain classification
+│   │   ├── aleph_client.py     # Async Aleph REST API client
+│   │   └── external/           # Federated data sources
+│   │       ├── adapters.py     # Yente, OpenCorporates, ICIJ, GLEIF clients
+│   │       ├── converters.py   # FtM converters for all 4 sources
+│   │       ├── federation.py   # FederatedSearch (parallel async fan-out)
+│   │       ├── rate_limit.py   # Token bucket, monthly counter, response cache
+│   │       ├── blockchain.py   # Etherscan (ETH) + Blockstream (BTC) clients
+│   │       └── document_sources.py  # Datashare + DocumentCloud adapters
+│   ├── graph/                  # Network analysis engine
+│   │   ├── ftm_loader.py       # FtM entities → NetworkX MultiDiGraph
+│   │   ├── algorithms.py       # 7 investigative algorithms
+│   │   ├── exporters.py        # GEXF, GraphML, CSV, D3, Cytoscape export
+│   │   └── engine.py           # GraphEngine orchestrator
+│   ├── export/                 # Investigation output pipeline
+│   │   ├── markdown.py         # Markdown report generator
+│   │   ├── ftm_bundle.py       # FtM JSONL/zip export for Aleph re-import
+│   │   └── timeline.py         # Temporal event extraction + pattern detection
+│   ├── monitoring/             # Change detection + alerts
+│   │   └── __init__.py         # ChangeDetector, SnapshotDiffer, ChangeAlert
+│   ├── skills/                 # Investigation skill chips
+│   │   ├── base.py             # BaseSkillChip + domain enums
+│   │   ├── llm_integration.py  # SkillLLMHelper + methodology prompts
+│   │   ├── investigation/      # Core investigation agents (6 chips)
+│   │   ├── specialized/        # Domain-specific agents (5 chips)
+│   │   ├── publication/        # Verification + story development (2 chips)
+│   │   └── resources/          # Training and reference (1 chip)
+│   ├── models/                 # Database models
+│   ├── api/                    # FastAPI routes
+│   ├── config/                 # Configuration
+│   └── db.py                   # Database connection
+├── migrations/                 # Alembic database migrations
+├── tests/                      # 311 tests (E2E, integration, unit)
+├── docs/                       # COMPETITIVE_ROADMAP, PILOT_PLAN, USER_GUIDE
+├── VALUES.json                 # Journalism ethics constitution
+├── ARCHITECTURE.md             # Technical architecture docs
+├── docker-compose.yml          # Docker services
+└── pyproject.toml              # Python package config
 ```
+
+## Testing
+
+```bash
+# Full test suite (311 tests, ~3 seconds)
+python -m pytest tests/ -q
+
+# Individual suites
+python tests/test_e2e.py                        # 51 E2E smoke tests
+PYTHONPATH=. python tests/test_integration.py   # 66 integration tests (mock Aleph)
+python -m pytest tests/test_graph.py            # 37 graph analytics tests
+python -m pytest tests/test_federation.py       # 40 federation + blockchain tests
+python -m pytest tests/test_export.py           # 24 export pipeline tests
+python -m pytest tests/test_monitoring.py       # 21 monitoring tests
+python -m pytest tests/test_document_sources.py # 24 document source tests
+python -m pytest tests/test_llm_integration.py  # 30 LLM integration tests
+python -m pytest tests/test_integration_pipeline.py  # 18 cross-module pipeline tests
+```
+
+No external services required — all tests use stubs, mocks, and synthetic datasets. The E2E tests verify graceful degradation when Aleph/external APIs are unreachable.
 
 ## Provenance & Heritage
 
