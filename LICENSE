@@ -1,0 +1,193 @@
+EMET SOURCE-AVAILABLE LICENSE
+Version 1.0, February 2026
+
+Copyright (c) 2026 Liberation Labs / The THCoalition
+All rights reserved.
+
+
+1. DEFINITIONS
+
+"Software" means the Emet investigative journalism framework, including
+all source code, documentation, configuration files, test suites, and
+associated materials in this repository.
+
+"Licensor" means Liberation Labs / The THCoalition, the copyright holder.
+
+"You" means the individual or entity exercising rights under this License.
+
+"Qualifying Journalism Use" means use of the Software exclusively for the
+purpose of investigative journalism, press freedom advocacy, or
+anti-corruption research by a Qualifying Organization.
+
+"Qualifying Organization" means any of the following:
+
+  (a) A newsroom, media outlet, or journalistic enterprise whose primary
+      purpose is the production and publication of journalism;
+  (b) A member, partner, or affiliate of the Global Investigative
+      Journalism Network (GIJN), the Organized Crime and Corruption
+      Reporting Project (OCCRP), the International Consortium of
+      Investigative Journalists (ICIJ), or successor organizations;
+  (c) A press freedom organization, including but not limited to the
+      Committee to Protect Journalists (CPJ), Reporters Without Borders
+      (RSF/Reporters Sans Frontières), the Freedom of the Press
+      Foundation, or equivalent national or regional bodies;
+  (d) An academic institution operating a journalism program, media
+      research center, or press freedom clinic;
+  (e) A nonprofit organization whose stated mission includes
+      anti-corruption, government transparency, corporate accountability,
+      or protection of whistleblowers;
+  (f) An individual freelance journalist who can demonstrate a bona fide
+      journalistic purpose and a track record of published investigative
+      work.
+
+"Commercial Use" means any use of the Software that does not qualify as
+Qualifying Journalism Use, including but not limited to: compliance
+screening, know-your-customer (KYC) processes, anti-money-laundering
+(AML) operations, due diligence services, corporate intelligence,
+litigation support, risk advisory, or integration into any product or
+service offered for profit.
+
+
+2. SOURCE AVAILABILITY
+
+The source code of the Software is made publicly available for the
+purposes of inspection, security auditing, academic study, and
+transparency. Public availability of the source code does not constitute
+a grant of rights beyond those explicitly stated in this License.
+
+
+3. GRANT FOR QUALIFYING JOURNALISM USE
+
+Subject to the terms of this License, including the Ethical Use
+Restrictions in Section 5, the Licensor grants You a non-exclusive,
+worldwide, royalty-free, non-sublicensable, revocable license to use,
+copy, modify, and privately distribute the Software, solely for
+Qualifying Journalism Use.
+
+You may share modifications with other Qualifying Organizations for
+Qualifying Journalism Use, provided that:
+  (a) You include a complete copy of this License with any distribution;
+  (b) You clearly identify any modifications You have made;
+  (c) You do not represent Your modified version as the official Emet
+      Software.
+
+If You are uncertain whether Your organization or use case qualifies,
+You may contact the Licensor at the address below for a determination.
+
+
+4. COMMERCIAL LICENSE REQUIRED
+
+Any Commercial Use of the Software requires a separate commercial license
+agreement with the Licensor. Commercial Use of the Software without a
+valid commercial license is a violation of this License and an
+infringement of the Licensor's copyright.
+
+To inquire about commercial licensing, contact:
+  licensing@liberationlabs.org
+
+
+5. ETHICAL USE RESTRICTIONS
+
+Regardless of whether You hold a journalism license or a commercial
+license, You may NOT use the Software, in whole or in part, directly
+or indirectly, for any of the following purposes:
+
+  (a) SURVEILLANCE OF JOURNALISTS AND SOURCES — To surveil, monitor,
+      track, identify, or profile journalists, media workers, editorial
+      staff, or their confidential sources, informants, or
+      whistleblowers.
+
+  (b) PRESS SUPPRESSION — To suppress, censor, restrict, delay, or
+      interfere with the publication of journalism or investigative
+      findings, or to facilitate prior restraint of publication.
+
+  (c) RETALIATION — To identify, target, harass, intimidate, or
+      retaliate against whistleblowers, sources of investigative
+      reporting, or individuals who have provided information to
+      journalists or anti-corruption bodies.
+
+  (d) CIRCUMVENTION OF PRESS PROTECTIONS — To circumvent, undermine, or
+      defeat legal protections for journalistic privilege, source
+      confidentiality, shield laws, or freedom of information rights.
+
+  (e) MASS SURVEILLANCE — To conduct mass surveillance, population-scale
+      monitoring, or bulk data collection on civilian populations,
+      whether by state or non-state actors.
+
+  (f) TARGETING VULNERABLE POPULATIONS — To target, profile, or
+      discriminate against individuals or groups on the basis of race,
+      ethnicity, religion, gender, sexual orientation, disability,
+      immigration status, or political opinion.
+
+  (g) WEAPONS AND VIOLENCE — To develop, support, or facilitate weapons
+      systems, military targeting, or acts of violence against any
+      person.
+
+These restrictions are grounded in:
+  - The Universal Declaration of Human Rights, Articles 12, 18, and 19
+  - The European Convention on Human Rights, Article 10
+  - The Inter-American Declaration of Principles on Freedom of Expression
+  - The African Charter on Human and Peoples' Rights, Article 9
+  - The UN Plan of Action on the Safety of Journalists
+
+Violation of any Ethical Use Restriction constitutes an automatic and
+immediate termination of all rights granted under this License and any
+commercial license agreement, without notice.
+
+
+6. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+THE LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL MEET YOUR
+REQUIREMENTS, OPERATE WITHOUT INTERRUPTION, OR BE ERROR-FREE.
+
+The Software is designed to assist human investigators. It does not
+replace professional editorial judgment, legal review, or fact-checking.
+The Licensor is not responsible for editorial decisions made using the
+Software or for the accuracy of any outputs produced by the Software.
+
+
+7. LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+8. TERMINATION
+
+This License is effective until terminated. Your rights under this
+License terminate automatically if You fail to comply with any term,
+including the Ethical Use Restrictions. Upon termination, You must cease
+all use of the Software and destroy all copies in Your possession.
+
+The Licensor reserves the right to revoke the journalism use grant at
+its sole discretion if it determines, in good faith, that Your use of
+the Software is inconsistent with the purposes of this License.
+
+
+9. GENERAL
+
+This License constitutes the entire agreement between You and the
+Licensor regarding the Software. If any provision is held unenforceable,
+the remaining provisions remain in full effect. The Ethical Use
+Restrictions in Section 5 are severable — if any individual restriction
+is held unenforceable, all other restrictions remain in effect.
+
+This License is governed by the laws of the State of California, United
+States, without regard to conflict-of-law principles.
+
+
+---
+
+Emet (אמת): Hebrew for "truth."
+
+The word inscribed on the Golem — a construct animated to protect
+its community. This software exists to serve investigative journalism
+and the public interest. Its license reflects that purpose.
+
+For licensing inquiries: licensing@liberationlabs.org
+Project home: https://github.com/Liberation-Labs-THCoalition/Project-FtM

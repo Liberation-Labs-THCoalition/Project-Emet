@@ -186,4 +186,12 @@ Built on:
 
 ## License
 
-MIT
+**Emet Source-Available License v1.0** — See [LICENSE](LICENSE) for full terms.
+
+Emet is **source-available, not open source**. The code is public for transparency, security auditing, and trust — but usage rights depend on who you are and what you're doing:
+
+- **Investigative journalists, newsrooms, press freedom orgs, anti-corruption NGOs, and academic journalism programs** → Free. No cost, no catch. This is who Emet was built for.
+- **Everyone else** (compliance, KYC/AML, due diligence, corporate intelligence, litigation support) → Commercial license required. Contact licensing@liberationlabs.org.
+- **Nobody, under any license** → may use Emet for surveillance of journalists, press suppression, targeting whistleblowers, mass surveillance, or circumventing press freedom protections. These restrictions are non-negotiable and grounded in international human rights law.
+
+For commercial licensing inquiries: **licensing@liberationlabs.org**

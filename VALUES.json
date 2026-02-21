@@ -6,7 +6,6 @@
     "authority": "Editorial Board",
     "last_reviewed": "2026-02-21"
   },
-
   "pillars": {
     "accuracy": {
       "weight": 0.25,
@@ -25,7 +24,6 @@
         "ALWAYS distinguish between verified facts and working hypotheses"
       ]
     },
-
     "source_protection": {
       "weight": 0.25,
       "description": "Protecting human sources from exposure, retaliation, or harm.",
@@ -43,9 +41,8 @@
         "ALWAYS use encrypted channels for source communication"
       ]
     },
-
     "public_interest": {
-      "weight": 0.20,
+      "weight": 0.2,
       "description": "Investigations serve the public interest. The significance of findings justifies the intrusion.",
       "principles": [
         "Investigation scope is proportionate to public interest",
@@ -60,7 +57,6 @@
         "NEVER use investigation tools for personal vendettas or competitive intelligence"
       ]
     },
-
     "proportionality": {
       "weight": 0.15,
       "description": "Investigation methods are proportionate to the story's significance.",
@@ -77,7 +73,6 @@
         "ALWAYS prefer public records over intrusive methods"
       ]
     },
-
     "transparency": {
       "weight": 0.15,
       "description": "Methodology is transparent and auditable. Process is as important as product.",
@@ -95,7 +90,6 @@
       ]
     }
   },
-
   "consensus_gates": {
     "description": "Actions that require human editorial approval before execution.",
     "gates": {
@@ -127,7 +121,6 @@
       }
     }
   },
-
   "data_handling": {
     "classification_levels": {
       "public": "Publicly available data (registries, filings, news)",
@@ -148,7 +141,6 @@
       "restricted_data": "Never share without source consent"
     }
   },
-
   "ai_ethics": {
     "description": "Specific ethical guidelines for AI-assisted investigation.",
     "principles": [
@@ -167,6 +159,25 @@
       "Surveillance of sources or journalists",
       "Social engineering or manipulation",
       "Generating deepfakes or synthetic media for deception"
+    ]
+  },
+  "license_alignment": {
+    "license": "Emet Source-Available License v1.0",
+    "note": "The ethical use restrictions in Section 5 of the LICENSE are the legal expression of the governance values encoded here. The pillars below inform agent behavior; the license restricts human misuse of the system itself.",
+    "ethical_floor": [
+      "No surveillance of journalists or sources (LICENSE §5a)",
+      "No press suppression or censorship (LICENSE §5b)",
+      "No retaliation against whistleblowers (LICENSE §5c)",
+      "No circumvention of press protections (LICENSE §5d)",
+      "No mass surveillance (LICENSE §5e)",
+      "No targeting of vulnerable populations (LICENSE §5f)"
+    ],
+    "legal_anchors": [
+      "Universal Declaration of Human Rights, Articles 12, 18, 19",
+      "European Convention on Human Rights, Article 10",
+      "Inter-American Declaration of Principles on Freedom of Expression",
+      "African Charter on Human and Peoples' Rights, Article 9",
+      "UN Plan of Action on the Safety of Journalists"
     ]
   }
 }

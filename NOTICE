@@ -1,0 +1,44 @@
+NOTICE — Emet Investigative Journalism Framework
+
+Copyright (c) 2026 Liberation Labs / The THCoalition
+
+This software is licensed under the Emet Source-Available License v1.0.
+See the LICENSE file for full terms.
+
+Source code is publicly available for transparency and security auditing.
+Usage rights depend on your organization and purpose:
+
+  Investigative journalism & press freedom → Free
+  Commercial use → License required (licensing@liberationlabs.org)
+  Surveillance, press suppression, or targeting sources → Prohibited
+
+---
+
+THIRD-PARTY COMPONENTS
+
+Emet incorporates or depends on the following open-source software:
+
+  FollowTheMoney (MIT) — https://followthemoney.tech/
+  Aleph (MIT) — https://github.com/alephdata/aleph
+  FastAPI (MIT) — https://fastapi.tiangolo.com/
+  LangChain (MIT) — https://github.com/langchain-ai/langchain
+  LangGraph (MIT) — https://github.com/langchain-ai/langgraph
+  spaCy (MIT) — https://spacy.io/
+  nomenklatura (MIT) — https://github.com/opensanctions/nomenklatura
+  rigour (MIT) — https://github.com/opensanctions/rigour
+  Pydantic (MIT) — https://pydantic.dev/
+  SQLAlchemy (MIT) — https://www.sqlalchemy.org/
+  httpx (BSD-3) — https://www.python-httpx.org/
+
+These components retain their original licenses. Emet's license applies
+only to Emet's own source code and documentation.
+
+---
+
+HERITAGE
+
+Emet's core infrastructure (kintsugi_engine/, memory/, BDI cognition,
+EFE routing, security layer, plugin system) is derived from
+Project-Kintsugi, a domain-agnostic self-repairing agentic harness.
+
+  https://github.com/Liberation-Labs-THCoalition/Project-Kintsugi
