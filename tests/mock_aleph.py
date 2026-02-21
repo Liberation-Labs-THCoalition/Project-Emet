@@ -403,6 +403,8 @@ class MockAlephTransport(httpx.AsyncBaseTransport):
 
         # --- Entity stream ---
         m = re.search(r"/collections/(\d+)/entities", path)
+        if not m:
+            m = re.search(r"/collections/(\d+)/_stream", path)
         if m:
             return self._stream_entities(m.group(1))
 
