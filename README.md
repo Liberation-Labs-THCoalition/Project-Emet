@@ -54,8 +54,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full technical documentation.
 
 ```bash
 # Clone
-git clone https://github.com/Liberation-Labs-THCoalition/Project-FtM.git
-cd Project-FtM
+git clone https://github.com/Liberation-Labs-THCoalition/Project-Emet.git
+cd Project-Emet
 
 # Install
 pip install -e ".[dev]"
@@ -136,7 +136,7 @@ All agent actions are governed by [VALUES.json](VALUES.json), which implements t
 ## Project Structure
 
 ```
-Project-FtM/
+Project-Emet/
 ├── emet/
 │   ├── cognition/          # EFE calculator, orchestrator, model router
 │   ├── kintsugi_engine/    # Self-repairing core (from Kintsugi)

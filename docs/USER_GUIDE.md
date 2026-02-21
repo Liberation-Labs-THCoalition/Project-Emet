@@ -68,8 +68,8 @@ The system is built on the [Kintsugi](https://github.com/Liberation-Labs-THCoali
 
 ```bash
 # Clone the repository
-git clone https://github.com/Liberation-Labs-THCoalition/Project-FtM.git
-cd Project-FtM
+git clone https://github.com/Liberation-Labs-THCoalition/Project-Emet.git
+cd Project-Emet
 
 # Create a virtual environment (recommended)
 python -m venv .venv
@@ -88,8 +88,8 @@ cp .env.example .env
 This starts the harness along with PostgreSQL and Redis — everything you need except Aleph itself.
 
 ```bash
-git clone https://github.com/Liberation-Labs-THCoalition/Project-FtM.git
-cd Project-FtM
+git clone https://github.com/Liberation-Labs-THCoalition/Project-Emet.git
+cd Project-Emet
 cp .env.example .env
 # Edit .env (see Configuration below)
 
@@ -104,7 +104,7 @@ If you're running OpenAleph locally too, they can share the same Docker network:
 # In your Aleph directory
 docker-compose up -d
 
-# In your Project-FtM directory
+# In your Project-Emet directory
 # Set ALEPH_HOST=http://aleph_api:8080 in .env (use the Aleph container name)
 docker-compose up -d
 ```

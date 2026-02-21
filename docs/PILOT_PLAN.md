@@ -305,7 +305,7 @@ Add 50% buffer to every phase. Things will break. Aleph's API will surprise us. 
 
 Don't send the pilot plan. Send three things:
 
-1. **The README** — it speaks for itself. Source-available, 15 skill chips, FtM-native, ethics-governed. Link: https://github.com/Liberation-Labs-THCoalition/Project-FtM
+1. **The README** — it speaks for itself. Source-available, 15 skill chips, FtM-native, ethics-governed. Link: https://github.com/Liberation-Labs-THCoalition/Project-Emet
 
 2. **A one-paragraph pitch:**
 

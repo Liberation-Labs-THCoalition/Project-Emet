@@ -76,7 +76,7 @@ graph = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Liberation-Labs-THCoalition/Project-FtM"
+Repository = "https://github.com/Liberation-Labs-THCoalition/Project-Emet"
 
 [tool.setuptools.packages.find]
 where = ["."]
