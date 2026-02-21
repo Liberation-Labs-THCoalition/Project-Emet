@@ -19,10 +19,16 @@ associated materials in this repository.
 purpose of investigative journalism, press freedom advocacy, or
 anti-corruption research by a Qualifying Organization.
 
-"Qualifying Organization" means any of the following:
+"Qualifying Organization" means any of the following, provided that the
+organization adheres to recognized journalistic ethics standards
+(including but not limited to the SPJ Code of Ethics, the OCCRP
+Editorial Standards, the IFJ Global Charter of Ethics for Journalists,
+or equivalent professional codes):
 
   (a) A newsroom, media outlet, or journalistic enterprise whose primary
-      purpose is the production and publication of journalism;
+      purpose is the production and publication of journalism in the
+      public interest, operating with editorial independence from
+      political parties, government entities, and advocacy campaigns;
   (b) A member, partner, or affiliate of the Global Investigative
       Journalism Network (GIJN), the Organized Crime and Corruption
       Reporting Project (OCCRP), the International Consortium of
@@ -39,6 +45,24 @@ anti-corruption research by a Qualifying Organization.
   (f) An individual freelance journalist who can demonstrate a bona fide
       journalistic purpose and a track record of published investigative
       work.
+
+An organization does NOT qualify if its primary activities include:
+  (i)   Conducting deceptive operations, entrapment, or infiltration
+        targeting private individuals, advocacy organizations, or
+        political opponents rather than investigating matters of
+        genuine public interest;
+  (ii)  Producing content primarily intended to serve the electoral,
+        legislative, or political strategy of a political party,
+        political campaign, political action committee, or government
+        entity;
+  (iii) Systematic harassment, doxxing, or intimidation of private
+        individuals, including through selective or deceptive editing
+        of recorded material;
+  (iv)  Operating under the direction or financial control of a
+        political party, government agency, or intelligence service.
+
+The Licensor reserves the right, exercisable in good faith, to make
+final determinations regarding Qualifying Organization status.
 
 "Commercial Use" means any use of the Software that does not qualify as
 Qualifying Journalism Use, including but not limited to: compliance
@@ -83,7 +107,7 @@ valid commercial license is a violation of this License and an
 infringement of the Licensor's copyright.
 
 To inquire about commercial licensing, contact:
-  licensing@liberationlabs.org
+  humboldtnomad@gmail.com
 
 
 5. ETHICAL USE RESTRICTIONS
@@ -189,5 +213,5 @@ The word inscribed on the Golem — a construct animated to protect
 its community. This software exists to serve investigative journalism
 and the public interest. Its license reflects that purpose.
 
-For licensing inquiries: licensing@liberationlabs.org
+For licensing inquiries: humboldtnomad@gmail.com
 Project home: https://github.com/Liberation-Labs-THCoalition/Project-FtM
