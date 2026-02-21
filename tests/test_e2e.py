@@ -1,4 +1,4 @@
-"""End-to-end smoke test for FtM Harness.
+"""End-to-end smoke test for Emet.
 
 Tests: imports, skill chip registry, FtM data spine, orchestrator routing,
 skill chip execution, and a simulated investigation flow.
@@ -26,7 +26,7 @@ def report(name, ok, detail=""):
 print("\n═══ 1. Core Imports ═══")
 
 try:
-    from ftm_harness.skills.base import (
+    from emet.skills.base import (
         BaseSkillChip, SkillDomain, SkillCapability,
         EFEWeights, SkillContext, SkillRequest, SkillResponse,
     )
@@ -35,13 +35,13 @@ except Exception as e:
     report("skills.base", False, str(e))
 
 try:
-    from ftm_harness.skills import get_chip, list_chips, SKILL_CHIP_REGISTRY
+    from emet.skills import get_chip, list_chips, SKILL_CHIP_REGISTRY
     report("skills registry", True)
 except Exception as e:
     report("skills registry", False, str(e))
 
 try:
-    from ftm_harness.ftm.data_spine import (
+    from emet.ftm.data_spine import (
         FtMFactory, FtMDomain, InvestigationEntity,
         CrossReferenceMatch, InvestigationContext,
     )
@@ -50,13 +50,13 @@ except Exception as e:
     report("ftm.data_spine", False, str(e))
 
 try:
-    from ftm_harness.ftm.aleph_client import AlephClient, AlephConfig
+    from emet.ftm.aleph_client import AlephClient, AlephConfig
     report("ftm.aleph_client", True)
 except Exception as e:
     report("ftm.aleph_client", False, str(e))
 
 try:
-    from ftm_harness.ftm.external.adapters import (
+    from emet.ftm.external.adapters import (
         YenteClient, OpenCorporatesClient, ICIJClient, GLEIFClient,
     )
     report("ftm.external.adapters", True)
@@ -64,13 +64,13 @@ except Exception as e:
     report("ftm.external.adapters", False, str(e))
 
 try:
-    from ftm_harness.cognition.efe import EFECalculator
+    from emet.cognition.efe import EFECalculator
     report("cognition.efe", True)
 except Exception as e:
     report("cognition.efe", False, str(e))
 
 try:
-    from ftm_harness.cognition.orchestrator import Orchestrator
+    from emet.cognition.orchestrator import Orchestrator
     report("cognition.orchestrator", True)
 except Exception as e:
     report("cognition.orchestrator", False, str(e))
@@ -178,7 +178,7 @@ except Exception as e:
 print("\n═══ 4. EFE Weight Profiles ═══")
 
 try:
-    from ftm_harness.cognition import efe as efe_mod
+    from emet.cognition import efe as efe_mod
     expected_profiles = [
         "ENTITY_SEARCH_WEIGHTS", "CROSS_REFERENCE_WEIGHTS",
         "DOCUMENT_ANALYSIS_WEIGHTS", "FINANCIAL_INVESTIGATION_WEIGHTS",
@@ -344,7 +344,7 @@ asyncio.run(test_chip_execution())
 print("\n═══ 6. Orchestrator Routing ═══")
 
 try:
-    from ftm_harness.cognition.orchestrator import Orchestrator, OrchestratorConfig, RoutingDecision
+    from emet.cognition.orchestrator import Orchestrator, OrchestratorConfig, RoutingDecision
     orch = Orchestrator(OrchestratorConfig())
 
     # Test keyword routing (classify_request is async)

@@ -1,14 +1,14 @@
-# FtM Harness — Architecture
+# Emet — Architecture
 
 ## Overview
 
-The FtM Harness is an agentic investigative journalism framework built on the **Kintsugi self-repairing harness** architecture, adapted for the **FollowTheMoney (FtM) data ecosystem** and OCCRP's Aleph investigative platform.
+The Emet is an agentic investigative journalism framework built on the **Kintsugi self-repairing harness** architecture, adapted for the **FollowTheMoney (FtM) data ecosystem** and OCCRP's Aleph investigative platform.
 
 It orchestrates a swarm of specialized skill chips (agents) that collaboratively search, analyze, cross-reference, and verify investigative leads — all while operating within a strict journalism ethics governance layer.
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│                    FtM Harness                            │
+│                    Emet                            │
 │                                                           │
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │              Orchestrator (Supervisor)               │  │

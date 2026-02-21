@@ -1,4 +1,4 @@
-# Project-FtM
+# Emet
 
 **Investigative Journalism Agentic Framework**
 
@@ -6,7 +6,7 @@ An AI-powered multi-agent system for investigative journalism, built on the [Kin
 
 ## What It Does
 
-FtM Harness orchestrates 15 specialized AI agents ("skill chips") that collaboratively investigate corruption, financial crime, government accountability, and corporate misconduct — all while operating within a strict journalism ethics governance layer.
+Emet orchestrates 15 specialized AI agents ("skill chips") that collaboratively investigate corruption, financial crime, government accountability, and corporate misconduct — all while operating within a strict journalism ethics governance layer.
 
 **Core capabilities:**
 - Search entities across OCCRP Aleph, OpenSanctions, OpenCorporates, ICIJ Offshore Leaks, and GLEIF
@@ -65,7 +65,7 @@ cp .env.example .env
 # Edit .env with your API keys and Aleph instance URL
 
 # Run (development)
-uvicorn ftm_harness.api.main:app --reload --port 8000
+uvicorn emet.api.main:app --reload --port 8000
 
 # Run (Docker)
 docker-compose up -d
@@ -89,7 +89,7 @@ ANTHROPIC_API_KEY=your-key
 OPENAI_API_KEY=your-key
 
 # Database
-DATABASE_URL=postgresql://ftm:ftm@localhost:5432/ftm_harness
+DATABASE_URL=postgresql://ftm:ftm@localhost:5432/emet
 
 # Redis (for Celery task queue)
 REDIS_URL=redis://localhost:6379/0
@@ -137,7 +137,7 @@ All agent actions are governed by [VALUES.json](VALUES.json), which implements t
 
 ```
 Project-FtM/
-├── ftm_harness/
+├── emet/
 │   ├── cognition/          # EFE calculator, orchestrator, model router
 │   ├── kintsugi_engine/    # Self-repairing core (from Kintsugi)
 │   ├── memory/             # CMA pipeline (from Kintsugi)

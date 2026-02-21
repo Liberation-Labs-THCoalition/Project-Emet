@@ -1,12 +1,12 @@
-# FtM Harness — User Guide
+# Emet — User Guide
 
-A practical guide to setting up and using the FtM Harness investigative journalism framework.
+A practical guide to setting up and using the Emet investigative journalism framework.
 
 ---
 
 ## Table of Contents
 
-1. [What is FtM Harness?](#1-what-is-ftm-harness)
+1. [What is Emet?](#1-what-is-emet)
 2. [System Requirements](#2-system-requirements)
 3. [Installation](#3-installation)
 4. [Configuration](#4-configuration)
@@ -22,9 +22,9 @@ A practical guide to setting up and using the FtM Harness investigative journali
 
 ---
 
-## 1. What is FtM Harness?
+## 1. What is Emet?
 
-FtM Harness is a multi-agent AI system that helps investigative journalists search, cross-reference, analyze, and verify data across the [FollowTheMoney](https://followthemoney.tech/) ecosystem. It orchestrates 15 specialized agents ("skill chips") that each handle a different aspect of the investigative workflow — from entity search to network analysis to pre-publication verification.
+Emet is a multi-agent AI system that helps investigative journalists search, cross-reference, analyze, and verify data across the [FollowTheMoney](https://followthemoney.tech/) ecosystem. It orchestrates 15 specialized agents ("skill chips") that each handle a different aspect of the investigative workflow — from entity search to network analysis to pre-publication verification.
 
 The system is built on the [Kintsugi](https://github.com/Liberation-Labs-THCoalition/Project-Kintsugi) self-repairing harness architecture, which provides safety-critical infrastructure: shadow verification of agent outputs, ethics governance, memory management, and security monitoring.
 
@@ -136,7 +136,7 @@ ALEPH_HOST=http://localhost:8080       # Your Aleph instance URL
 ALEPH_API_KEY=your-api-key             # Aleph API key (from your Aleph user profile)
 
 # ─── Database (defaults work with Docker Compose) ────
-DATABASE_URL=postgresql+asyncpg://ftm:ftm@localhost:5432/ftm_harness
+DATABASE_URL=postgresql+asyncpg://ftm:ftm@localhost:5432/emet
 REDIS_URL=redis://localhost:6379/0
 
 # ─── External Data Sources (optional) ────────────────
@@ -184,7 +184,7 @@ Once configured, test the connection:
 
 ```python
 import asyncio
-from ftm_harness.ftm.aleph_client import AlephClient, AlephConfig
+from emet.ftm.aleph_client import AlephClient, AlephConfig
 
 async def test():
     client = AlephClient(AlephConfig(
@@ -209,8 +209,8 @@ Here's a walkthrough of a basic investigation workflow using the Python API dire
 
 ```python
 import asyncio
-from ftm_harness.skills import get_chip
-from ftm_harness.skills.base import SkillContext, SkillRequest
+from emet.skills import get_chip
+from emet.skills.base import SkillContext, SkillRequest
 
 # Create a shared investigation context
 ctx = SkillContext(
@@ -375,7 +375,7 @@ The **response** tells you what happened:
 ### Listing Available Chips
 
 ```python
-from ftm_harness.skills import list_chips
+from emet.skills import list_chips
 
 for chip in list_chips():
     print(f"{chip['name']:30s} {chip['domain']:25s} {chip['description']}")
@@ -665,10 +665,10 @@ Inspired by the NYT AI investigation methodology:
 
 ```bash
 # Development (with hot reload)
-uvicorn ftm_harness.api:app --reload --port 8000
+uvicorn emet.api:app --reload --port 8000
 
 # Production
-uvicorn ftm_harness.api:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn emet.api:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ### Endpoints
@@ -701,8 +701,8 @@ The orchestrator classifies the message, routes it to the appropriate skill chip
 For scripting and notebooks, you can bypass the API and use skill chips directly:
 
 ```python
-from ftm_harness.skills import get_chip
-from ftm_harness.skills.base import SkillContext, SkillRequest
+from emet.skills import get_chip
+from emet.skills.base import SkillContext, SkillRequest
 
 chip = get_chip("entity_search")
 ctx = SkillContext(investigation_id="inv-001", user_id="me")
@@ -723,7 +723,7 @@ docker-compose up -d
 ```
 
 This starts:
-- **ftm_harness** — The API server (port 8000)
+- **emet** — The API server (port 8000)
 - **PostgreSQL** (pgvector) — Database for investigation state, memory, entities
 - **Redis** — Task queue for async operations
 
@@ -735,7 +735,7 @@ Set these in `.env` before running:
 ALEPH_HOST=http://your-aleph-host:8080
 ALEPH_API_KEY=your-key
 ANTHROPIC_API_KEY=your-key    # Optional
-DATABASE_URL=postgresql+asyncpg://ftm:ftm@db:5432/ftm_harness
+DATABASE_URL=postgresql+asyncpg://ftm:ftm@db:5432/emet
 REDIS_URL=redis://redis:6379/0
 ```
 
