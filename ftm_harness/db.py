@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
-from kintsugi.config.settings import settings
+from ftm_harness.config.settings import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,

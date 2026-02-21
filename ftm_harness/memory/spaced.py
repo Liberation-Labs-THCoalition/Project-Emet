@@ -82,7 +82,7 @@ class SpacedRetrieval:
         if session is None:
             raise ValueError("session is required")
 
-        from kintsugi.models.base import MemoryUnit
+        from ftm_harness.models.base import MemoryUnit
 
         now = datetime.now(timezone.utc)
 
@@ -141,7 +141,7 @@ class SpacedRetrieval:
             memory_id: UUID of the memory unit.
             session: Active async database session.
         """
-        from kintsugi.models.base import MemoryUnit
+        from ftm_harness.models.base import MemoryUnit
 
         now = datetime.now(timezone.utc)
         await session.execute(

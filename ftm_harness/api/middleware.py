@@ -13,8 +13,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from kintsugi.config.settings import settings
-from kintsugi.security.pii import PIIRedactor
+from ftm_harness.config.settings import settings
+from ftm_harness.security.pii import PIIRedactor
 
 logger = logging.getLogger("kintsugi.api")
 

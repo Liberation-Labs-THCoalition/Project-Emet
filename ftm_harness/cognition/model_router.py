@@ -11,7 +11,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-from kintsugi.config.settings import settings
+from ftm_harness.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

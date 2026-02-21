@@ -192,7 +192,7 @@ def pii_redaction_middleware(
     Usage::
 
         from fastapi import FastAPI
-        from kintsugi.security.pii import pii_redaction_middleware, PIIRedactor
+        from ftm_harness.security.pii import pii_redaction_middleware, PIIRedactor
 
         app = FastAPI()
         app.middleware("http")(pii_redaction_middleware(skip_paths=["/health"]))

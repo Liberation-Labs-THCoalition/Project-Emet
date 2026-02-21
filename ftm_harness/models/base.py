@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from kintsugi.db import Base
+from ftm_harness.db import Base
 
 
 def _utcnow() -> datetime:

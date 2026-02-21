@@ -79,7 +79,7 @@ class TemporalLog:
         Returns:
             String UUID of the created record.
         """
-        from kintsugi.models.base import TemporalMemory
+        from ftm_harness.models.base import TemporalMemory
 
         row = TemporalMemory(
             org_id=org_id,
@@ -125,7 +125,7 @@ class TemporalLog:
         if session is None:
             raise ValueError("session is required")
 
-        from kintsugi.models.base import TemporalMemory
+        from ftm_harness.models.base import TemporalMemory
 
         stmt = select(TemporalMemory).where(TemporalMemory.org_id == org_id)
 

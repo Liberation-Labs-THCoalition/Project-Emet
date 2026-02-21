@@ -22,7 +22,7 @@ Key components:
 
 Typical usage::
 
-    from kintsugi.memory.cma_stage3 import retrieve, ScoredResult
+    from ftm_harness.memory.cma_stage3 import retrieve, ScoredResult
 
     ranked = retrieve(
         query="Why did the agent change strategy?",

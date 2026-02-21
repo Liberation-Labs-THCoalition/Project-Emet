@@ -16,7 +16,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kintsugi.memory.cma_stage1 import Window
+from ftm_harness.memory.cma_stage1 import Window
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ class ColdArchive:
         Returns:
             String UUID of the newly created archive row.
         """
-        from kintsugi.models.base import MemoryArchive
+        from ftm_harness.models.base import MemoryArchive
 
         text = _window_text(window)
         compressed = _compress(text)
@@ -134,7 +134,7 @@ class ColdArchive:
         Returns:
             List of :class:`ArchivedWindow` with decompressed content.
         """
-        from kintsugi.models.base import MemoryArchive
+        from ftm_harness.models.base import MemoryArchive
 
         start, end = date_range
         stmt = (
@@ -170,7 +170,7 @@ class ColdArchive:
         Returns:
             :class:`IntegrityReport` summarising the check.
         """
-        from kintsugi.models.base import MemoryArchive
+        from ftm_harness.models.base import MemoryArchive
 
         stmt = select(MemoryArchive).where(MemoryArchive.org_id == org_id)
         result = await session.execute(stmt)

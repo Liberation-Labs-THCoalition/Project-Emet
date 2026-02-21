@@ -17,8 +17,8 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
-from kintsugi.cognition.model_router import CostTracker, ModelRouter, ModelTier
-from kintsugi.config.settings import settings
+from ftm_harness.cognition.model_router import CostTracker, ModelRouter, ModelTier
+from ftm_harness.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

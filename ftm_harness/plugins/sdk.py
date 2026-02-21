@@ -14,7 +14,7 @@ Each interface uses Python's Protocol for structural subtyping,
 allowing plugins to be implemented without inheriting from base classes.
 
 Example - Creating a Skill Chip Plugin:
-    from kintsugi.plugins.sdk import SkillChipPlugin, PluginMetadata
+    from ftm_harness.plugins.sdk import SkillChipPlugin, PluginMetadata
 
     class MySkillChipPlugin:
         metadata = PluginMetadata(

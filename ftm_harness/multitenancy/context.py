@@ -13,7 +13,7 @@ Key Features:
     - Middleware integration for web frameworks
 
 Example:
-    from kintsugi.multitenancy.context import (
+    from ftm_harness.multitenancy.context import (
         TenantContext, get_current_tenant, set_current_tenant
     )
 
@@ -506,7 +506,7 @@ class TenantMiddleware:
 
     Example:
         from fastapi import FastAPI
-        from kintsugi.multitenancy.context import TenantMiddleware
+        from ftm_harness.multitenancy.context import TenantMiddleware
 
         app = FastAPI()
         app.add_middleware(TenantMiddleware, header_name="X-Tenant-ID")

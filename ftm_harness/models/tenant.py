@@ -28,7 +28,7 @@ from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from kintsugi.db import Base
+from ftm_harness.db import Base
 
 
 def _utcnow() -> datetime:

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from kintsugi.kintsugi_engine.verifier import VerifierVerdict, VerificationResult
+from ftm_harness.kintsugi_engine.verifier import VerifierVerdict, VerificationResult
 
 logger = logging.getLogger(__name__)
 

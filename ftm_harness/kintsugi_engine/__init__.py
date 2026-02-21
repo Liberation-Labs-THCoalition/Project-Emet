@@ -3,45 +3,45 @@
 Re-exports all public symbols from the engine sub-modules.
 """
 
-from kintsugi.kintsugi_engine.shadow_fork import (
+from ftm_harness.kintsugi_engine.shadow_fork import (
     ShadowConfig,
     ShadowFork,
     ShadowState,
     ShadowStatus,
 )
-from kintsugi.kintsugi_engine.verifier import (
+from ftm_harness.kintsugi_engine.verifier import (
     VerificationResult,
     Verifier,
     VerifierConfig,
     VerifierVerdict,
 )
-from kintsugi.kintsugi_engine.promoter import (
+from ftm_harness.kintsugi_engine.promoter import (
     GoldenTrace,
     PromotionAction,
     Promoter,
     PromoterConfig,
 )
-from kintsugi.kintsugi_engine.evolution import (
+from ftm_harness.kintsugi_engine.evolution import (
     EvolutionConfig,
     EvolutionManager,
     ModificationProposal,
     ModificationScope,
 )
-from kintsugi.kintsugi_engine.calibration import (
+from ftm_harness.kintsugi_engine.calibration import (
     CalibrationConfig,
     CalibrationEngine,
     CalibrationRecord,
     CalibrationReport,
     DriftDirection,
 )
-from kintsugi.kintsugi_engine.bloom_adapter import (
+from ftm_harness.kintsugi_engine.bloom_adapter import (
     AdversarialScenario,
     BloomAdapter,
     BloomConfig,
     BloomResult,
     ScenarioType,
 )
-from kintsugi.kintsugi_engine.drift import (
+from ftm_harness.kintsugi_engine.drift import (
     DriftCategory,
     DriftConfig,
     DriftDetector,

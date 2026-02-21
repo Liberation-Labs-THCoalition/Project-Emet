@@ -12,10 +12,10 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kintsugi.config.settings import settings
-from kintsugi.db import get_session
-from kintsugi.memory.cma_stage3 import ScoredResult, estimate_complexity, retrieve
-from kintsugi.memory.embeddings import get_embedding_provider
+from ftm_harness.config.settings import settings
+from ftm_harness.db import get_session
+from ftm_harness.memory.cma_stage3 import ScoredResult, estimate_complexity, retrieve
+from ftm_harness.memory.embeddings import get_embedding_provider
 
 logger = logging.getLogger(__name__)
 

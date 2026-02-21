@@ -18,7 +18,7 @@ Plugin States:
     - ERROR: Plugin failed to load or initialize
 
 Example:
-    from kintsugi.plugins.loader import PluginLoader, PluginState
+    from ftm_harness.plugins.loader import PluginLoader, PluginState
 
     loader = PluginLoader(plugin_dirs=["./plugins", "/etc/kintsugi/plugins"])
 
@@ -44,7 +44,7 @@ import logging
 import sys
 import traceback
 
-from kintsugi.plugins.sdk import (
+from ftm_harness.plugins.sdk import (
     PluginMetadata,
     SkillChipPlugin,
     AdapterPlugin,

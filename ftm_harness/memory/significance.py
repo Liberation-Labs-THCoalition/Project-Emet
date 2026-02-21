@@ -114,7 +114,7 @@ class ExpiredMemoryReaper:
         Returns:
             :class:`ReapResult` with counts.
         """
-        from kintsugi.models.base import MemoryUnit
+        from ftm_harness.models.base import MemoryUnit
 
         now = datetime.now(timezone.utc)
 

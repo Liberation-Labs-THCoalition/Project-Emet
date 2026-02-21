@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from kintsugi.security.intent_capsule import IntentCapsule, verify_capsule
-from kintsugi.security.monitor import SecurityMonitor, Verdict
-from kintsugi.security.pii import PIIRedactor
+from ftm_harness.security.intent_capsule import IntentCapsule, verify_capsule
+from ftm_harness.security.monitor import SecurityMonitor, Verdict
+from ftm_harness.security.pii import PIIRedactor
 
 
 # ---------------------------------------------------------------------------

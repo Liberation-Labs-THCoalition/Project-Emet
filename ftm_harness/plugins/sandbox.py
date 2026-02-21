@@ -14,7 +14,7 @@ Security Measures:
     - Execution timeout
 
 Example:
-    from kintsugi.plugins.sandbox import PluginSandbox, SandboxPolicy
+    from ftm_harness.plugins.sandbox import PluginSandbox, SandboxPolicy
 
     # Create restrictive policy
     policy = SandboxPolicy(
@@ -46,7 +46,7 @@ import signal
 import sys
 import traceback
 
-from kintsugi.plugins.loader import LoadedPlugin, PluginState
+from ftm_harness.plugins.loader import LoadedPlugin, PluginState
 
 logger = logging.getLogger(__name__)
 

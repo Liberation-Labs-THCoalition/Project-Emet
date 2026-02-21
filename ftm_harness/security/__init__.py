@@ -3,7 +3,7 @@
 Exports all public classes and key functions from the security subsystem.
 """
 
-from kintsugi.security.intent_capsule import (
+from ftm_harness.security.intent_capsule import (
     AlignmentResult,
     CycleVerdict,
     IntentCapsule,
@@ -12,29 +12,29 @@ from kintsugi.security.intent_capsule import (
     verify_capsule,
     verify_cycle,
 )
-from kintsugi.security.invariants import (
+from ftm_harness.security.invariants import (
     InvariantChecker,
     InvariantContext,
     InvariantResult,
 )
-from kintsugi.security.monitor import (
+from ftm_harness.security.monitor import (
     SecurityMonitor,
     SecurityVerdict,
     Severity,
     Verdict,
 )
-from kintsugi.security.pii import (
+from ftm_harness.security.pii import (
     PIIDetection,
     PIIRedactor,
     RedactionResult,
     pii_redaction_middleware,
 )
-from kintsugi.security.sandbox import (
+from ftm_harness.security.sandbox import (
     SandboxContext,
     SandboxResult,
     ShadowSandbox,
 )
-from kintsugi.security.shield import (
+from ftm_harness.security.shield import (
     BudgetEnforcer,
     CircuitBreaker,
     EgressValidator,

@@ -15,7 +15,7 @@ Tenant Tiers:
     - FOREST: Enterprise tier with maximum resources and support
 
 Example:
-    from kintsugi.multitenancy.tenant import Tenant, TenantConfig, TenantTier
+    from ftm_harness.multitenancy.tenant import Tenant, TenantConfig, TenantTier
 
     config = TenantConfig(
         tier=TenantTier.GROVE,

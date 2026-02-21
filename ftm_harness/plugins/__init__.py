@@ -31,7 +31,7 @@ Security:
     - Allowed imports
 
 Example:
-    from kintsugi.plugins import (
+    from ftm_harness.plugins import (
         PluginLoader, PluginRegistry, PluginSandbox,
         SkillChipPlugin, PluginMetadata,
     )
@@ -50,24 +50,24 @@ Example:
             registry.register(loaded)
 """
 
-from kintsugi.plugins.sdk import (
+from ftm_harness.plugins.sdk import (
     PluginMetadata,
     SkillChipPlugin,
     AdapterPlugin,
     StoragePlugin,
     MiddlewarePlugin,
 )
-from kintsugi.plugins.loader import (
+from ftm_harness.plugins.loader import (
     LoadedPlugin,
     PluginLoader,
     PluginState,
 )
-from kintsugi.plugins.sandbox import (
+from ftm_harness.plugins.sandbox import (
     PluginSandbox,
     SandboxPolicy,
     SandboxViolation,
 )
-from kintsugi.plugins.registry import (
+from ftm_harness.plugins.registry import (
     PluginRegistry,
 )
 

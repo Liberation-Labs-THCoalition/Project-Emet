@@ -13,8 +13,8 @@ Registry Features:
     - Health monitoring
 
 Example:
-    from kintsugi.plugins.registry import PluginRegistry
-    from kintsugi.plugins.loader import PluginLoader
+    from ftm_harness.plugins.registry import PluginRegistry
+    from ftm_harness.plugins.loader import PluginLoader
 
     registry = PluginRegistry()
     loader = PluginLoader()
@@ -37,14 +37,14 @@ from typing import Any, Callable
 import asyncio
 import logging
 
-from kintsugi.plugins.sdk import (
+from ftm_harness.plugins.sdk import (
     PluginMetadata,
     SkillChipPlugin,
     AdapterPlugin,
     StoragePlugin,
     MiddlewarePlugin,
 )
-from kintsugi.plugins.loader import LoadedPlugin, PluginState
+from ftm_harness.plugins.loader import LoadedPlugin, PluginState
 
 logger = logging.getLogger(__name__)
 

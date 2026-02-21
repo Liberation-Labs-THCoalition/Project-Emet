@@ -16,7 +16,7 @@ Key Components:
     - FeedbackType: Types of feedback supported
 
 Example Usage:
-    >>> from kintsugi.tuning import EFETuner, TuningConfig, TuningStrategy
+    >>> from ftm_harness.tuning import EFETuner, TuningConfig, TuningStrategy
     >>>
     >>> config = TuningConfig(
     ...     strategy=TuningStrategy.GRADIENT,
@@ -26,7 +26,7 @@ Example Usage:
     >>> tuner = EFETuner(config)
     >>>
     >>> # Record outcomes from decisions
-    >>> from kintsugi.tuning import TuningOutcome
+    >>> from ftm_harness.tuning import TuningOutcome
     >>> outcome = TuningOutcome(
     ...     decision_id="decision-123",
     ...     efe_weights_used={"autonomy": 0.3, "beneficence": 0.4},
@@ -53,7 +53,7 @@ Safety Features:
     - Rollback capability to previous weights
 """
 
-from kintsugi.tuning.efe_tuner import (
+from ftm_harness.tuning.efe_tuner import (
     EFETuner,
     TuningConfig,
     TuningOutcome,
@@ -64,7 +64,7 @@ from kintsugi.tuning.efe_tuner import (
     TuningMetrics,
 )
 
-from kintsugi.tuning.feedback import (
+from ftm_harness.tuning.feedback import (
     Feedback,
     FeedbackCollector,
     FeedbackType,

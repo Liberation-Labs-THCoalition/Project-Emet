@@ -12,13 +12,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kintsugi.db import get_session
-from kintsugi.models.base import Organization, TemporalMemory
-from kintsugi.security.monitor import SecurityMonitor
-from kintsugi.security.pii import PIIRedactor
-from kintsugi.cognition.orchestrator import Orchestrator, OrchestratorConfig
-from kintsugi.cognition.model_router import ModelRouter
-from kintsugi.config.settings import settings
+from ftm_harness.db import get_session
+from ftm_harness.models.base import Organization, TemporalMemory
+from ftm_harness.security.monitor import SecurityMonitor
+from ftm_harness.security.pii import PIIRedactor
+from ftm_harness.cognition.orchestrator import Orchestrator, OrchestratorConfig
+from ftm_harness.cognition.model_router import ModelRouter
+from ftm_harness.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def _get_orchestrator() -> Orchestrator:
     # Only initialize LLM if API key is configured
     if settings.ANTHROPIC_API_KEY:
         try:
-            from kintsugi.cognition.llm_client import create_llm_client
+            from ftm_harness.cognition.llm_client import create_llm_client
             _llm_client = create_llm_client()
             llm_classifier = _llm_client.classify_intent
             logger.info("LLM classifier initialized with Anthropic API")

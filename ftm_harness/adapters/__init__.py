@@ -10,11 +10,11 @@ This package provides adapters for connecting Kintsugi to various chat platforms
 
 Example usage::
 
-    from kintsugi.adapters.shared import PairingManager, PairingConfig
-    from kintsugi.adapters.slack import SlackAdapter, SlackConfig
-    from kintsugi.adapters.discord import DiscordAdapter, DiscordConfig
-    from kintsugi.adapters.webchat import WebChatHandler, WebChatConfig
-    from kintsugi.adapters.email import EmailAdapter, EmailConfig
+    from ftm_harness.adapters.shared import PairingManager, PairingConfig
+    from ftm_harness.adapters.slack import SlackAdapter, SlackConfig
+    from ftm_harness.adapters.discord import DiscordAdapter, DiscordConfig
+    from ftm_harness.adapters.webchat import WebChatHandler, WebChatConfig
+    from ftm_harness.adapters.email import EmailAdapter, EmailConfig
 
     # Create shared pairing manager
     pairing = PairingManager(PairingConfig(expiration_minutes=15))
@@ -35,7 +35,7 @@ Example usage::
     )
 """
 
-from kintsugi.adapters.shared import (
+from ftm_harness.adapters.shared import (
     # Base
     AdapterMessage,
     AdapterPlatform,
@@ -52,7 +52,7 @@ from kintsugi.adapters.shared import (
     InMemoryAllowlistStore,
 )
 
-from kintsugi.adapters.email import (
+from ftm_harness.adapters.email import (
     # Adapter
     EmailAdapter,
     EmailAdapterError,

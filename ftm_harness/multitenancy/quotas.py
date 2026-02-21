@@ -13,7 +13,7 @@ Tracked Resources:
     - Concurrent sessions (active chat sessions)
 
 Example:
-    from kintsugi.multitenancy.quotas import QuotaManager, QuotaExceededError
+    from ftm_harness.multitenancy.quotas import QuotaManager, QuotaExceededError
 
     quota_manager = QuotaManager()
 

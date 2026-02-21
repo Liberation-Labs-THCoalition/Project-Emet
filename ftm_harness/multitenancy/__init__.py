@@ -23,7 +23,7 @@ Key Components:
     - TenantContext: Context manager for tenant-scoped operations
 
 Example:
-    from kintsugi.multitenancy import (
+    from ftm_harness.multitenancy import (
         Tenant, TenantTier, TenantConfig,
         TenantContext, get_current_tenant,
         QuotaManager, TenantIsolator,
@@ -43,21 +43,21 @@ Example:
         ...
 """
 
-from kintsugi.multitenancy.tenant import (
+from ftm_harness.multitenancy.tenant import (
     Tenant,
     TenantConfig,
     TenantTier,
 )
-from kintsugi.multitenancy.isolation import (
+from ftm_harness.multitenancy.isolation import (
     IsolationStrategy,
     TenantIsolator,
 )
-from kintsugi.multitenancy.quotas import (
+from ftm_harness.multitenancy.quotas import (
     QuotaExceededError,
     QuotaManager,
     ResourceUsage,
 )
-from kintsugi.multitenancy.context import (
+from ftm_harness.multitenancy.context import (
     TenantContext,
     get_current_tenant,
     set_current_tenant,

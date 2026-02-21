@@ -3,7 +3,7 @@
 Consensus gating and observability for agent actions.
 """
 
-from kintsugi.governance.consensus import (
+from ftm_harness.governance.consensus import (
     ConsensusPriority,
     ConsentCategory,
     ConsentItem,
@@ -11,7 +11,7 @@ from kintsugi.governance.consensus import (
     ConsensusConfig,
     ConsensusGate,
 )
-from kintsugi.governance.otel import (
+from ftm_harness.governance.otel import (
     KintsugiTracer,
     OTelConfig,
     SpanContext,

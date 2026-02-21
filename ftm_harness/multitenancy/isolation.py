@@ -17,7 +17,7 @@ Isolation Strategies:
                 Maximum isolation for enterprise tenants.
 
 Example:
-    from kintsugi.multitenancy.isolation import TenantIsolator, IsolationStrategy
+    from ftm_harness.multitenancy.isolation import TenantIsolator, IsolationStrategy
 
     isolator = TenantIsolator(strategy=IsolationStrategy.ROW_LEVEL)
     await isolator.ensure_isolation("org_12345")

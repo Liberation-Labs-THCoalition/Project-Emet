@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from kintsugi import __version__
-from kintsugi.config.settings import settings
+from ftm_harness.config.settings import settings
 
 router = APIRouter(tags=["health"])
 

@@ -10,7 +10,7 @@ Implements the SimpleMem pipeline (arXiv:2601.02553) with five modules:
 - **spaced**: Fibonacci spaced retrieval scheduling
 """
 
-from kintsugi.memory.cma_stage1 import (
+from ftm_harness.memory.cma_stage1 import (
     AtomicFact,
     Stage1Result,
     Turn,
@@ -21,44 +21,44 @@ from kintsugi.memory.cma_stage1 import (
     score_entropy,
     segment_dialogue,
 )
-from kintsugi.memory.cold_archive import (
+from ftm_harness.memory.cold_archive import (
     ArchivedWindow,
     ColdArchive,
     IntegrityReport,
 )
-from kintsugi.memory.embeddings import (
+from ftm_harness.memory.embeddings import (
     APIEmbeddingProvider,
     EmbeddingProvider,
     LocalEmbeddingProvider,
     get_embedding_provider,
 )
-from kintsugi.memory.significance import (
+from ftm_harness.memory.significance import (
     ExpiredMemoryReaper,
     MemoryLayer,
     ReapResult,
     compute_expiration,
     compute_layer,
 )
-from kintsugi.memory.spaced import (
+from ftm_harness.memory.spaced import (
     FIBONACCI,
     DueMemory,
     SpacedRetrieval,
     fib_interval,
 )
-from kintsugi.memory.temporal import (
+from ftm_harness.memory.temporal import (
     Category,
     TemporalEvent,
     TemporalLog,
 )
 
-from kintsugi.memory.cma_stage2 import (
+from ftm_harness.memory.cma_stage2 import (
     Fact,
     Insight,
     compute_affinity,
     cluster_facts,
     consolidate,
 )
-from kintsugi.memory.cma_stage3 import (
+from ftm_harness.memory.cma_stage3 import (
     QueryProfile,
     ScoredResult,
     estimate_complexity,
@@ -66,13 +66,13 @@ from kintsugi.memory.cma_stage3 import (
     fuse_weighted,
     retrieve,
 )
-from kintsugi.memory.org_isolation import (
+from ftm_harness.memory.org_isolation import (
     ORG_MEMORIES_SCHEMA,
     OrgMemoryStore,
     MemoryRecord,
     get_org_connection,
 )
-from kintsugi.memory.bdi_bridge import (
+from ftm_harness.memory.bdi_bridge import (
     BDIBridge,
     Belief,
     Desire,

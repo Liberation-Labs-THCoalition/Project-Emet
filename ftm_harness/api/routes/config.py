@@ -9,10 +9,10 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kintsugi.config.values_loader import load_from_template, merge_with_defaults
-from kintsugi.config.values_schema import OrganizationValues
-from kintsugi.db import get_session
-from kintsugi.models.base import Organization
+from ftm_harness.config.values_loader import load_from_template, merge_with_defaults
+from ftm_harness.config.values_schema import OrganizationValues
+from ftm_harness.db import get_session
+from ftm_harness.models.base import Organization
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
