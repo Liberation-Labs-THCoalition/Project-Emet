@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/agent", tags=["agent"])
 _monitor = SecurityMonitor()
 _redactor = PIIRedactor()
 
-# LLM client - lazy initialization to handle missing API key gracefully
+# LLM client - lazy initialization with provider fallback
 _llm_client = None
 _orchestrator = None
 
@@ -41,15 +41,14 @@ def _get_orchestrator() -> Orchestrator:
 
     llm_classifier = None
 
-    # Only initialize LLM if API key is configured
-    if settings.ANTHROPIC_API_KEY:
-        try:
-            from emet.cognition.llm_client import create_llm_client
-            _llm_client = create_llm_client()
-            llm_classifier = _llm_client.classify_intent
-            logger.info("LLM classifier initialized with Anthropic API")
-        except Exception as e:
-            logger.warning("Failed to initialize LLM client: %s", e)
+    # Initialize LLM client — factory handles provider selection and fallback
+    try:
+        from emet.cognition.llm_factory import create_llm_client_sync
+        _llm_client = create_llm_client_sync()
+        llm_classifier = _llm_client.classify_intent
+        logger.info("LLM classifier initialized (provider: %s)", _llm_client.provider.value)
+    except Exception as e:
+        logger.warning("Failed to initialize LLM client: %s", e)
 
     _orchestrator = Orchestrator(
         config=OrchestratorConfig(),

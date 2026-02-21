@@ -26,11 +26,24 @@ class Settings(BaseSettings):
     EMBEDDING_MODE: Literal["local", "api"] = "local"
     EMBEDDING_MODEL: str = "all-mpnet-base-v2"
 
-    # --- LLM Keys (optional) ---
+    # --- LLM Provider ---
+    LLM_PROVIDER: Literal["ollama", "anthropic", "stub"] = "ollama"
+    LLM_FALLBACK_ENABLED: bool = True
+
+    # --- Ollama (local models — default) ---
+    OLLAMA_HOST: str = "http://localhost:11434"
+    OLLAMA_MODELS: dict[str, str] = {
+        "fast": "llama3.2:3b",
+        "balanced": "mistral:7b",
+        "powerful": "deepseek-r1:14b",
+    }
+    OLLAMA_TIMEOUT: float = 120.0
+
+    # --- LLM Keys (optional — used as fallback or when provider=anthropic) ---
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
 
-    # --- Model routing ---
+    # --- Model routing (Anthropic tier mapping) ---
     MODEL_ROUTING: dict[str, str] = {
         "haiku": "claude-3-5-haiku-20241022",
         "sonnet": "claude-sonnet-4-20250514",
