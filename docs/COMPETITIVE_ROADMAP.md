@@ -1,9 +1,25 @@
 # Emet Competitive Feature Adoption Roadmap
 
-**Version**: 1.0
+**Version**: 2.0
 **Date**: 2026-02-21
-**Status**: Planning
+**Status**: ✅ Complete (all 9 sprints implemented)
 **Context**: Competitive landscape analysis identified ~15 high-impact capabilities from OSINT, compliance, journalism, and AI agent competitors that Emet can adopt within its architecture and budget constraints.
+
+## Implementation Summary
+
+| Sprint | Status | Tests | Key Deliverables |
+|--------|--------|-------|------------------|
+| 1. LLM Abstraction | ✅ | — | Ollama/Anthropic/Stub clients, cascading fallback, factory |
+| 2+3. Data Federation + Blockchain | ✅ | 40 | FtM converters, parallel async search, rate limiting, ETH/BTC clients |
+| 4. Graph Analytics | ✅ | 37 | NetworkX engine, 7 investigative algorithms, Gephi/CSV/D3 export |
+| 5. Export & Reporting | ✅ | 24 | Markdown reports, FtM bundles, temporal pattern detection |
+| 6. Monitoring | ✅ | 21 | Change detection, snapshot diffing, sanctions alerts |
+| 7. Document Ingestion | ✅ | 24 | Datashare + DocumentCloud adapters, NER→FtM conversion |
+| 8. LLM Skill Integration | ✅ | 30 | SkillLLMHelper, 6 methodology prompts, structured output |
+| 9. Integration & Hardening | ✅ | 18 | Full pipeline test, 194 total tests passing |
+
+**Total new code**: ~8,500 lines across 20 modules
+**Total new tests**: 194 (all passing in 2.5s)
 
 ---
 
