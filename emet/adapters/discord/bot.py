@@ -138,6 +138,66 @@ class DiscordAdapter(BaseAdapter):
         self._pairing = pairing
         self._client = client
         self._started = False
+        self._investigation_bridge: Any = None  # Optional[InvestigationBridge]
+
+    def set_investigation_bridge(self, bridge: Any) -> None:
+        """Set the investigation bridge for !investigate commands."""
+        self._investigation_bridge = bridge
+
+    async def handle_investigate_command(
+        self,
+        channel_id: str,
+        goal: str,
+    ) -> dict | None:
+        """Handle !investigate command.
+
+        Runs an investigation via the bridge and returns a Discord embed
+        with the results.
+
+        Args:
+            channel_id: The Discord channel ID.
+            goal: The investigation goal text.
+
+        Returns:
+            Discord embed dict, or None if bridge not configured.
+        """
+        if self._investigation_bridge is None:
+            return None
+
+        if not goal:
+            return {
+                "title": "❌ Missing Investigation Goal",
+                "description": "Usage: `!investigate Acme Corp shell companies`",
+                "color": 0xFF0000,
+            }
+
+        # Send initial message
+        if self._client:
+            await self._client.send_message(
+                channel_id=channel_id,
+                content=f"🔍 Starting investigation: {goal}",
+            )
+
+        async def send_progress(text: str) -> None:
+            if self._client:
+                try:
+                    await self._client.send_message(channel_id=channel_id, content=text)
+                except Exception:
+                    pass
+
+        result = await self._investigation_bridge.handle_investigate_command(
+            goal=goal,
+            channel_id=channel_id,
+            send_fn=send_progress,
+        )
+
+        embed = self._investigation_bridge.format_for_discord(result)
+
+        # Send the embed
+        if self._client:
+            await self._client.send_message(channel_id=channel_id, embed=embed)
+
+        return embed
 
     @property
     def config(self) -> DiscordConfig:

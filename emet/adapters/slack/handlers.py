@@ -14,6 +14,7 @@ from .blocks import error_blocks, help_blocks, pairing_request_blocks
 
 if TYPE_CHECKING:
     from ..shared import AdapterResponse, PairingManager
+    from ..investigation_bridge import InvestigationBridge
     from .bot import SlackAdapter
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class SlackEventHandler:
         self._adapter = adapter
         self._pairing = pairing
         self._agent_callback: Callable | None = None
+        self._investigation_bridge: InvestigationBridge | None = None
 
     def set_agent_callback(self, callback: Callable) -> None:
         """Set the callback for forwarding messages to the agent pipeline.
@@ -54,6 +56,14 @@ class SlackEventHandler:
                 an AdapterResponse.
         """
         self._agent_callback = callback
+
+    def set_investigation_bridge(self, bridge: InvestigationBridge) -> None:
+        """Set the investigation bridge for /investigate commands.
+
+        Args:
+            bridge: The InvestigationBridge instance.
+        """
+        self._investigation_bridge = bridge
 
     async def handle_message(
         self,
@@ -182,6 +192,8 @@ class SlackEventHandler:
 
         if subcommand == "pair":
             await self.handle_pair_command(user_id, channel_id, respond)
+        elif subcommand == "investigate":
+            await self._handle_investigate_command(args, channel_id, respond)
         elif subcommand == "status":
             await self._handle_status_command(user_id, respond)
         elif subcommand == "help":
@@ -247,6 +259,87 @@ class SlackEventHandler:
                     suggestion="Please try again or contact support.",
                 ),
                 response_type="ephemeral",
+            )
+
+    async def _handle_investigate_command(
+        self,
+        goal: str,
+        channel_id: str,
+        respond: Callable,
+    ) -> None:
+        """Handle the investigate subcommand.
+
+        Launches an investigation via the bridge and sends results as
+        formatted Slack blocks.
+
+        Args:
+            goal: The investigation goal text.
+            channel_id: The channel where the command was invoked.
+            respond: Bolt's respond function for sending responses.
+        """
+        if not goal:
+            await respond(
+                blocks=error_blocks(
+                    error="Missing investigation goal.",
+                    suggestion="Usage: `/kintsugi investigate Acme Corp shell companies`",
+                ),
+                response_type="ephemeral",
+            )
+            return
+
+        if self._investigation_bridge is None:
+            await respond(
+                blocks=error_blocks(
+                    error="Investigation bridge not configured.",
+                    suggestion="Contact your administrator to enable investigations.",
+                ),
+                response_type="ephemeral",
+            )
+            return
+
+        # Acknowledge with a visible message — investigation may take a while
+        await respond(
+            text=f":mag: Starting investigation: {goal}",
+            response_type="in_channel",
+        )
+
+        async def send_progress(text: str) -> None:
+            """Send progress updates to the channel."""
+            try:
+                await respond(text=text, response_type="in_channel")
+            except Exception:
+                logger.debug("Failed to send progress update")
+
+        try:
+            result = await self._investigation_bridge.handle_investigate_command(
+                goal=goal,
+                channel_id=channel_id,
+                send_fn=send_progress,
+            )
+
+            if result.error:
+                await respond(
+                    blocks=error_blocks(
+                        error=f"Investigation failed: {result.error}",
+                        suggestion="Check logs for details.",
+                    ),
+                )
+            else:
+                # Send formatted Slack blocks
+                slack_msg = self._investigation_bridge.format_for_slack(result)
+                await respond(
+                    text=slack_msg["text"],
+                    blocks=slack_msg["blocks"],
+                    response_type="in_channel",
+                )
+
+        except Exception as exc:
+            logger.exception("Investigation command failed")
+            await respond(
+                blocks=error_blocks(
+                    error="An unexpected error occurred during investigation.",
+                    suggestion="Please try again or contact support.",
+                ),
             )
 
     async def _send_pairing_instructions(
