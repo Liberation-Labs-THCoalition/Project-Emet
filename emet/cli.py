@@ -375,7 +375,14 @@ def _print_session_results(session: Any) -> None:
 
 
 def _save_report(session: Any, path: str) -> None:
-    """Save investigation report to JSON."""
+    """Save investigation report to JSON.
+
+    This is a publication boundary — PII is scrubbed from the output.
+    Internal session data (entities, raw findings) is preserved in the
+    session file itself; this export is for sharing.
+    """
+    from emet.agent.safety_harness import SafetyHarness
+
     summary = session.summary()
     output = {
         "summary": summary,
@@ -386,9 +393,20 @@ def _save_report(session: Any, path: str) -> None:
         "entities": list(session.entities.values()),
         "reasoning": session.reasoning_trace,
     }
+
+    # Publication boundary: scrub PII before writing
+    harness = SafetyHarness.from_defaults()
+    output = harness.scrub_dict_for_publication(output, "cli_export")
+    pub_audit = harness.audit_summary()
+
     with open(path, "w") as fp:
         json.dump(output, fp, indent=2)
-    print(f"\nSaved to {path}")
+
+    scrub_count = pub_audit.get("publication_scrubs", 0)
+    if scrub_count:
+        print(f"\nSaved to {path} ({scrub_count} PII items scrubbed)")
+    else:
+        print(f"\nSaved to {path}")
 
 
 async def _cmd_search(args: argparse.Namespace) -> None:

@@ -469,7 +469,11 @@ If the investigation has enough information, use "conclude"."""
                 ))
 
     async def _generate_report(self, session: Session) -> None:
-        """Generate final investigation report."""
+        """Generate final investigation report.
+
+        This is a publication boundary — PII is scrubbed from the
+        report output before it's attached to the session.
+        """
         try:
             entity_summaries = []
             for eid, entity in list(session.entities.items())[:50]:
@@ -485,8 +489,15 @@ If the investigation has enough information, use "conclude"."""
                     "entities": list(session.entities.values())[:50],
                 },
             )
+
+            # Publication boundary: scrub PII from report output
+            if self._config.enable_pii_redaction:
+                result = self._harness.scrub_dict_for_publication(result, "report")
+
             session.record_tool_use("generate_report", {"title": session.goal}, result)
-            session.record_reasoning("Report generated.")
+            session.record_reasoning("Report generated (PII scrubbed for publication).")
+        except Exception as exc:
+            session.record_reasoning(f"Report generation failed: {exc}")
         except Exception as exc:
             session.record_reasoning(f"Report generation failed: {exc}")
 
