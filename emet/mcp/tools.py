@@ -395,6 +395,58 @@ EMET_TOOLS: list[MCPToolDef] = [
         category="documents",
         read_only=False,
     ),
+
+    # --- Workflows ---
+    MCPToolDef(
+        name="list_workflows",
+        description=(
+            "List available investigation workflow templates.  Workflows "
+            "are pre-built investigation patterns that chain multiple tools "
+            "into automated sequences."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "Filter by category (e.g. corporate, compliance, person)",
+                },
+            },
+        },
+        category="workflows",
+    ),
+
+    MCPToolDef(
+        name="run_workflow",
+        description=(
+            "Execute an investigation workflow template.  Available workflows: "
+            "corporate_ownership, person_investigation, sanctions_screening, "
+            "domain_investigation, due_diligence.  Each workflow chains "
+            "multiple investigative steps automatically."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "workflow_name": {
+                    "type": "string",
+                    "description": "Name of the workflow to execute",
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": "Workflow input parameters (varies by workflow)",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Preview parameter resolution without executing",
+                },
+            },
+            "required": ["workflow_name", "inputs"],
+        },
+        category="workflows",
+        read_only=False,
+        requires_confirmation=True,
+    ),
 ]
 
 
@@ -423,6 +475,8 @@ class EmetToolExecutor:
             "check_alerts": self._check_alerts,
             "generate_report": self._generate_report,
             "ingest_documents": self._ingest_documents,
+            "list_workflows": self._list_workflows,
+            "run_workflow": self._run_workflow,
         }
 
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -707,6 +761,72 @@ class EmetToolExecutor:
             "source": source,
             "document_count": len(docs),
             "documents": docs[:limit],
+        }
+
+    async def _list_workflows(
+        self,
+        category: str = "",
+    ) -> dict[str, Any]:
+        """List available workflow templates."""
+        from emet.workflows.registry import WorkflowRegistry
+
+        registry = WorkflowRegistry()
+        registry.load_builtins()
+        workflows = registry.list_workflows()
+
+        if category:
+            workflows = [w for w in workflows if w.get("category") == category]
+
+        return {
+            "workflow_count": len(workflows),
+            "workflows": workflows,
+        }
+
+    async def _run_workflow(
+        self,
+        workflow_name: str,
+        inputs: dict[str, Any],
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Execute an investigation workflow."""
+        from emet.workflows.registry import WorkflowRegistry
+        from emet.workflows.engine import WorkflowEngine
+
+        registry = WorkflowRegistry()
+        registry.load_builtins()
+
+        workflow = registry.get(workflow_name)
+        if workflow is None:
+            available = [w["name"] for w in registry.list_workflows()]
+            return {
+                "error": f"Unknown workflow: {workflow_name}",
+                "available": available,
+            }
+
+        engine = WorkflowEngine(tool_executor=self)
+        run = await engine.run(workflow, inputs, dry_run=dry_run)
+
+        return {
+            "run_id": run.run_id,
+            "workflow": workflow_name,
+            "status": run.status.value,
+            "steps_completed": sum(
+                1 for sr in run.step_results
+                if sr.status.value in ("completed", "skipped")
+            ),
+            "steps_total": len(run.step_results),
+            "entity_count": run.entity_count,
+            "error": run.error,
+            "step_results": [
+                {
+                    "step_id": sr.step_id,
+                    "tool": sr.tool,
+                    "status": sr.status.value,
+                    "duration": sr.duration_seconds,
+                    "skip_reason": sr.skip_reason,
+                }
+                for sr in run.step_results
+            ],
         }
 
 
