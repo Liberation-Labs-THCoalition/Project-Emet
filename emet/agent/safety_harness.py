@@ -1,21 +1,31 @@
-"""Safety harness — unified pre/post gate for the agent loop.
+"""Safety harness — two-mode safety gate for the agent loop.
 
-Composes the Kintsugi safety infrastructure into a single interface
-the agent loop can call before and after every tool invocation:
+Two modes, matching how investigative journalists actually work:
 
-    harness = SafetyHarness.from_config(config)
+  **investigate** (audit-only):
+    During investigation, the agent needs raw data to reason with.
+    All safety checks run but only *log* — nothing is blocked,
+    nothing is scrubbed. PII, injection patterns, rate anomalies
+    are recorded in the audit trail for later review.
 
-    # Before tool call
-    verdict = harness.pre_check(tool="search_entities", args={...})
-    if verdict.blocked:
-        skip the call
+  **publish** (enforcing):
+    At the publication boundary (report generation, exports, API
+    responses), all checks enforce. PII is scrubbed, security
+    flags block output, budgets are enforced.
 
-    # After tool call
-    result = harness.post_check(result_text, session_context)
-    # result.scrubbed_text has PII redacted
-    # result.security_flags has any injection/traversal warnings
+Usage:
+    harness = SafetyHarness.from_defaults()
 
-This is the wiring layer between emet.agent and emet.security/kintsugi_engine.
+    # During investigation — observes, never interferes
+    harness.pre_check(tool="search_entities", args={...})
+    harness.post_check(result_text, tool="search_entities")
+
+    # At publication boundary — enforces everything
+    clean = harness.scrub_for_publication(report_text)
+
+The threat model is inverted from a chatbot: the agent is trusted,
+the external world is the data source. Safety infrastructure provides
+observability during investigation and enforcement at publication.
 """
 
 from __future__ import annotations
@@ -29,6 +39,10 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
+
 @dataclass
 class PreCheckVerdict:
     """Result of pre-execution safety checks."""
@@ -38,11 +52,13 @@ class PreCheckVerdict:
     shield_decision: str = "ALLOW"
     capsule_valid: bool = True
     rate_limited: bool = False
+    observations: list[str] = field(default_factory=list)
 
     @property
     def summary(self) -> str:
         if self.allowed:
-            return "ALLOW"
+            obs = f" [{len(self.observations)} observations]" if self.observations else ""
+            return f"ALLOW{obs}"
         return f"BLOCK: {self.reason}"
 
 
@@ -70,17 +86,33 @@ class PostCheckResult:
 class SafetyEvent:
     """Audit log entry for a safety check."""
     timestamp: str
-    check_type: str  # "pre" or "post"
+    check_type: str   # "pre", "post", or "publish"
     tool: str
-    result: str      # "ALLOW" or "BLOCK"
+    result: str       # "ALLOW", "BLOCK", "OBSERVED", "SCRUBBED"
     details: str
+    mode: str = ""    # "investigate" or "publish"
 
+
+# ---------------------------------------------------------------------------
+# SafetyHarness
+# ---------------------------------------------------------------------------
 
 class SafetyHarness:
-    """Unified safety gate composing Shield, PIIRedactor, and SecurityMonitor.
+    """Two-mode safety gate: audit-only during investigation, enforcing at publication.
 
-    Wraps all Kintsugi safety infrastructure into pre_check / post_check
-    calls that the agent loop invokes around every tool execution.
+    During investigation:
+      - All checks run but only observe and log
+      - No tool calls are blocked (agent needs freedom to investigate)
+      - No data is scrubbed (PII is the work product)
+      - Shield/monitor/redactor findings are recorded in audit trail
+
+    At publication boundary:
+      - PII is scrubbed from outward-facing text
+      - Security flags can block output
+      - Full enforcement mode
+
+    Intent capsule constraints are always enforced (they represent
+    the operator's hard mandate, not safety heuristics).
     """
 
     def __init__(
@@ -141,9 +173,9 @@ class SafetyHarness:
             enable_security_monitor=False,
         )
 
-    # -------------------------------------------------------------------
-    # Pre-execution checks
-    # -------------------------------------------------------------------
+    # ===================================================================
+    # INVESTIGATE MODE — audit-only, observe but never interfere
+    # ===================================================================
 
     def pre_check(
         self,
@@ -151,14 +183,15 @@ class SafetyHarness:
         args: dict[str, Any],
         cost: float = 0.0,
     ) -> PreCheckVerdict:
-        """Run all pre-execution safety checks.
+        """Run pre-execution checks in audit-only mode.
 
-        Called before every tool invocation. Returns a verdict that
-        the agent loop uses to decide whether to proceed.
+        Logs all observations but only blocks on intent capsule
+        violations (operator hard mandate). Shield and monitor
+        findings are recorded but not enforced.
         """
         verdict = PreCheckVerdict()
 
-        # 1. Intent capsule constraint check
+        # Intent capsule is ALWAYS enforced — it's the operator's mandate
         if self._intent_capsule is not None:
             constraints = self._intent_capsule.constraints
             allowed_tools = constraints.get("allowed_tools", [])
@@ -167,7 +200,7 @@ class SafetyHarness:
                 verdict.blocked = True
                 verdict.capsule_valid = False
                 verdict.reason = f"Tool '{tool}' not in capsule allowed_tools"
-                self._log("pre", tool, "BLOCK", verdict.reason)
+                self._log("pre", tool, "BLOCK", verdict.reason, "investigate")
                 return verdict
 
             budget = constraints.get("budget_remaining", None)
@@ -175,10 +208,10 @@ class SafetyHarness:
                 verdict.allowed = False
                 verdict.blocked = True
                 verdict.reason = f"Cost {cost} exceeds capsule budget {budget}"
-                self._log("pre", tool, "BLOCK", verdict.reason)
+                self._log("pre", tool, "BLOCK", verdict.reason, "investigate")
                 return verdict
 
-        # 2. Shield checks (budget, rate limit, circuit breaker)
+        # Shield — observe only, do not block
         if self._enable_shield and self._shield is not None:
             shield_result = self._shield.check_action(
                 action_type=f"tool:{tool}",
@@ -187,44 +220,91 @@ class SafetyHarness:
             )
             verdict.shield_decision = shield_result.decision.value
             if shield_result.decision.value == "BLOCK":
-                verdict.allowed = False
-                verdict.blocked = True
-                verdict.rate_limited = "rate limit" in shield_result.reason.lower()
-                verdict.reason = shield_result.reason
-                self._log("pre", tool, "BLOCK", verdict.reason)
-                return verdict
+                verdict.observations.append(
+                    f"Shield would block: {shield_result.reason}"
+                )
+                logger.info(
+                    "Safety observation (not enforced): Shield would block %s: %s",
+                    tool, shield_result.reason,
+                )
 
-        # 3. Security monitor — scan args for injection
+        # Security monitor — observe only, do not block
         if self._enable_monitor and self._security_monitor is not None:
             args_text = json.dumps(args, default=str)
             sec_result = self._security_monitor.check_text(args_text)
-            if sec_result.verdict.value == "BLOCK":
-                verdict.allowed = False
-                verdict.blocked = True
-                verdict.reason = f"Security monitor: {sec_result.reason}"
-                self._log("pre", tool, "BLOCK", verdict.reason)
-                return verdict
+            if sec_result.verdict.value != "ALLOW":
+                verdict.observations.append(
+                    f"Monitor flag: {sec_result.reason}"
+                )
+                logger.info(
+                    "Safety observation (not enforced): Monitor flagged %s args: %s",
+                    tool, sec_result.reason,
+                )
 
-        self._log("pre", tool, "ALLOW", "all checks passed")
+        obs_detail = "; ".join(verdict.observations) if verdict.observations else "clean"
+        self._log("pre", tool, "OBSERVED", obs_detail, "investigate")
         return verdict
-
-    # -------------------------------------------------------------------
-    # Post-execution checks
-    # -------------------------------------------------------------------
 
     def post_check(
         self,
         text: str,
         tool: str = "",
     ) -> PostCheckResult:
-        """Run all post-execution safety checks.
+        """Run post-execution checks in audit-only mode.
 
-        Called after tool execution. Scrubs PII from output and
-        scans for security concerns in returned data.
+        Detects PII and security issues but does NOT scrub or block.
+        Returns the original text unmodified with observations logged.
         """
         result = PostCheckResult(scrubbed_text=text)
 
-        # 1. PII redaction
+        # PII detection — observe only, do not scrub
+        if self._enable_pii and self._pii_redactor is not None:
+            try:
+                redaction = self._pii_redactor.redact(text)
+                result.pii_found = redaction.detections_count
+                result.pii_types = redaction.types_found
+                # Do NOT replace the text — keep raw for investigation
+                if result.pii_found > 0:
+                    logger.info(
+                        "PII detected in %s output (not scrubbed): %d items (%s)",
+                        tool, result.pii_found, ", ".join(result.pii_types),
+                    )
+            except Exception as exc:
+                logger.warning("PII detection failed: %s", exc)
+
+        # Security scan — observe only
+        if self._enable_monitor and self._security_monitor is not None:
+            try:
+                sec_result = self._security_monitor.check_text(text)
+                result.security_verdict = sec_result.verdict.value
+                if sec_result.verdict.value != "ALLOW":
+                    result.security_flags.append(sec_result.reason)
+                    logger.info(
+                        "Security flag in %s output (not enforced): %s",
+                        tool, sec_result.reason,
+                    )
+            except Exception as exc:
+                logger.warning("Security scan failed: %s", exc)
+
+        self._log("post", tool, "OBSERVED", result.summary, "investigate")
+        return result
+
+    # ===================================================================
+    # PUBLISH MODE — enforcing, scrubs and blocks at the boundary
+    # ===================================================================
+
+    def scrub_for_publication(self, text: str, context: str = "report") -> PostCheckResult:
+        """Scrub text for publication — full enforcement mode.
+
+        This is the publication boundary. PII is redacted, security
+        issues are flagged, and the scrubbed text is returned.
+
+        Use this for: reports, exports, API responses, anything that
+        leaves the investigation workspace.
+        """
+        result = PostCheckResult(scrubbed_text=text)
+
+        # PII redaction — ENFORCED
         if self._enable_pii and self._pii_redactor is not None:
             try:
                 redaction = self._pii_redactor.redact(text)
@@ -233,13 +313,13 @@ class SafetyHarness:
                 result.pii_types = redaction.types_found
                 if result.pii_found > 0:
                     logger.info(
-                        "PII redacted from %s output: %d items (%s)",
-                        tool, result.pii_found, ", ".join(result.pii_types),
+                        "PII scrubbed for publication (%s): %d items (%s)",
+                        context, result.pii_found, ", ".join(result.pii_types),
                     )
             except Exception as exc:
-                logger.warning("PII redaction failed: %s", exc)
+                logger.warning("PII redaction failed at publication: %s", exc)
 
-        # 2. Security scan of output
+        # Security scan — ENFORCED
         if self._enable_monitor and self._security_monitor is not None:
             try:
                 sec_result = self._security_monitor.check_text(result.scrubbed_text)
@@ -248,22 +328,37 @@ class SafetyHarness:
                     result.security_flags.append(sec_result.reason)
                     result.safe = sec_result.verdict.value != "BLOCK"
                     logger.warning(
-                        "Security flag in %s output: %s",
-                        tool, sec_result.reason,
+                        "Security flag at publication (%s): %s",
+                        context, sec_result.reason,
                     )
             except Exception as exc:
-                logger.warning("Security scan failed: %s", exc)
+                logger.warning("Security scan failed at publication: %s", exc)
 
         self._log(
-            "post", tool,
-            "CLEAN" if result.safe else "FLAGGED",
+            "publish", context,
+            "SCRUBBED" if result.pii_found else "CLEAN",
             result.summary,
+            "publish",
         )
         return result
 
-    # -------------------------------------------------------------------
-    # Shield feedback (for circuit breaker)
-    # -------------------------------------------------------------------
+    def scrub_dict_for_publication(
+        self, data: dict[str, Any], context: str = "export"
+    ) -> dict[str, Any]:
+        """Recursively scrub all string values in a dict for publication."""
+        def scrub(obj: Any) -> Any:
+            if isinstance(obj, str) and len(obj) > 5:
+                return self.scrub_for_publication(obj, context).scrubbed_text
+            if isinstance(obj, dict):
+                return {k: scrub(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [scrub(v) for v in obj]
+            return obj
+        return scrub(data)
+
+    # ===================================================================
+    # Circuit breaker feedback
+    # ===================================================================
 
     def report_tool_success(self, tool: str) -> None:
         """Tell the shield a tool call succeeded (resets circuit breaker)."""
@@ -289,9 +384,9 @@ class SafetyHarness:
             except Exception:
                 pass
 
-    # -------------------------------------------------------------------
+    # ===================================================================
     # Audit
-    # -------------------------------------------------------------------
+    # ===================================================================
 
     @property
     def audit_log(self) -> list[SafetyEvent]:
@@ -299,23 +394,35 @@ class SafetyHarness:
 
     def audit_summary(self) -> dict[str, Any]:
         """Machine-readable audit summary."""
-        blocks = [e for e in self._audit_log if "BLOCK" in e.result]
+        blocks = [e for e in self._audit_log if e.result == "BLOCK"]
+        observations = [e for e in self._audit_log if e.result == "OBSERVED"]
+        scrubs = [e for e in self._audit_log if e.result == "SCRUBBED"]
         pii_events = [e for e in self._audit_log if "PII" in e.details]
         return {
             "total_checks": len(self._audit_log),
             "blocks": len(blocks),
-            "pii_redactions": len(pii_events),
+            "observations": len(observations),
+            "publication_scrubs": len(scrubs),
+            "pii_detections": len(pii_events),
             "events": [
-                {"check": e.check_type, "tool": e.tool, "result": e.result}
+                {
+                    "check": e.check_type,
+                    "tool": e.tool,
+                    "result": e.result,
+                    "mode": e.mode,
+                }
                 for e in self._audit_log
             ],
         }
 
-    def _log(self, check_type: str, tool: str, result: str, details: str) -> None:
+    def _log(
+        self, check_type: str, tool: str, result: str, details: str, mode: str = "",
+    ) -> None:
         self._audit_log.append(SafetyEvent(
             timestamp=datetime.now(timezone.utc).isoformat(),
             check_type=check_type,
             tool=tool,
             result=result,
             details=details,
+            mode=mode,
         ))

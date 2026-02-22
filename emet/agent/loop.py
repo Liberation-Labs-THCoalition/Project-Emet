@@ -349,7 +349,7 @@ If the investigation has enough information, use "conclude"."""
         session: Session,
         action: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a tool call with safety wrapping."""
+        """Execute a tool call with safety observation (audit-only)."""
         tool = action["tool"]
         args = action.get("args", {})
 
@@ -359,8 +359,11 @@ If the investigation has enough information, use "conclude"."""
             # Safety: report success to circuit breaker
             self._harness.report_tool_success(tool)
 
-            # Safety: post-check (PII redaction + security scan)
-            result = self._post_check_result(tool, result)
+            # Safety: observe result (audit-only, no scrubbing)
+            # PII and security observations are logged but data is untouched
+            result_text = json.dumps(result, default=str)
+            if len(result_text) > 10:
+                self._harness.post_check(result_text, tool=tool)
 
             session.record_tool_use(tool, args, result)
             return result
@@ -376,22 +379,6 @@ If the investigation has enough information, use "conclude"."""
             if lead_id:
                 session.resolve_lead(lead_id, "dead_end")
             return error
-
-    def _post_check_result(
-        self, tool: str, result: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Run post-check on tool result, redacting PII from string values."""
-        def scrub(obj: Any) -> Any:
-            if isinstance(obj, str) and len(obj) > 5:
-                check = self._harness.post_check(obj, tool=tool)
-                return check.scrubbed_text
-            if isinstance(obj, dict):
-                return {k: scrub(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [scrub(v) for v in obj]
-            return obj
-
-        return scrub(result)
 
     async def _process_result(
         self,

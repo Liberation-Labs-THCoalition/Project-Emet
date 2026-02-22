@@ -47,45 +47,49 @@ class TestSafetyHarnessPreCheck:
         assert verdict.shield_decision == "ALLOW"
 
     def test_pre_check_blocks_over_budget(self):
+        """Shield budget is now audit-only — observed but not enforced."""
         from emet.security.shield import Shield, ShieldConfig
         config = ShieldConfig(budget_session_limit=1.0)
         shield = Shield(config)
         harness = SafetyHarness(shield=shield, enable_shield=True)
 
-        # First call eats most of the budget
-        harness.pre_check(tool="t1", args={}, cost=0.9)
-        shield.budget.record_spend(0.9)  # Actually commit the spend
-        # Second call should be blocked
+        shield.budget.record_spend(0.9)
         verdict = harness.pre_check(tool="t2", args={}, cost=0.5)
-        assert verdict.blocked
-        assert "Budget" in verdict.reason
+        # In investigate mode, shield observes but does NOT block
+        assert verdict.allowed
+        assert not verdict.blocked
+        assert len(verdict.observations) > 0
+        assert "Shield would block" in verdict.observations[0]
 
     def test_pre_check_blocks_rate_limited(self):
+        """Rate limiter is now audit-only — observed but not enforced."""
         from emet.security.shield import Shield, ShieldConfig
-        # Token bucket: burst=2, rate=0 means no refill
         config = ShieldConfig(rate_limits={"fast_tool": {"rate": 0, "burst": 2}})
         shield = Shield(config)
         harness = SafetyHarness(shield=shield, enable_shield=True)
 
-        harness.pre_check(tool="fast_tool", args={})  # token 1
-        harness.pre_check(tool="fast_tool", args={})  # token 2
-        verdict = harness.pre_check(tool="fast_tool", args={})  # exhausted
-        assert verdict.blocked
-        assert verdict.rate_limited
+        harness.pre_check(tool="fast_tool", args={})
+        harness.pre_check(tool="fast_tool", args={})
+        verdict = harness.pre_check(tool="fast_tool", args={})
+        # Observed but not blocked
+        assert verdict.allowed
+        assert len(verdict.observations) > 0
 
     def test_pre_check_blocks_circuit_breaker(self):
+        """Circuit breaker is now audit-only — observed but not enforced."""
         from emet.security.shield import Shield, ShieldConfig
         config = ShieldConfig(circuit_breaker_threshold=2)
         shield = Shield(config)
         harness = SafetyHarness(shield=shield, enable_shield=True)
 
-        # Trip the circuit breaker with consecutive failures
         shield.circuit_breaker.record_result("bad_tool", success=False)
         shield.circuit_breaker.record_result("bad_tool", success=False)
 
         verdict = harness.pre_check(tool="bad_tool", args={})
-        assert verdict.blocked
-        assert "circuit breaker" in verdict.reason.lower()
+        # Observed but not blocked
+        assert verdict.allowed
+        assert len(verdict.observations) > 0
+        assert "circuit breaker" in verdict.observations[0].lower()
 
     def test_pre_check_intent_capsule_tool_restriction(self):
         capsule = MagicMock()
@@ -113,19 +117,20 @@ class TestSafetyHarnessPreCheck:
         assert verdict.blocked
         assert "budget" in verdict.reason.lower()
 
-    def test_pre_check_security_monitor_blocks_injection(self):
+    def test_pre_check_security_monitor_observes_injection(self):
         harness = SafetyHarness.from_defaults()
-        # Craft args that trigger the security monitor's patterns
+        # Craft args that might trigger the security monitor's patterns
         verdict = harness.pre_check(
             tool="search_entities",
             args={"query": "'; DROP TABLE users; --"},
         )
-        # Whether this blocks depends on patterns — at minimum it runs
+        # In investigate mode, monitor observes but does not block
         assert isinstance(verdict, PreCheckVerdict)
+        assert verdict.allowed  # Never blocked in investigate mode
 
 
 class TestSafetyHarnessPostCheck:
-    """Post-execution safety checks."""
+    """Post-execution safety checks — audit-only in investigate mode."""
 
     def test_disabled_harness_passthrough(self):
         harness = SafetyHarness.disabled()
@@ -133,20 +138,24 @@ class TestSafetyHarnessPostCheck:
         assert result.scrubbed_text == "John's SSN is 123-45-6789"
         assert result.pii_found == 0
 
-    def test_pii_redaction(self):
+    def test_pii_detected_but_not_scrubbed(self):
+        """In investigate mode, PII is detected but text is NOT scrubbed."""
         harness = SafetyHarness.from_defaults()
         result = harness.post_check(
             "Contact John at john@example.com or 555-123-4567",
             tool="search_entities",
         )
         assert result.pii_found > 0
-        assert "REDACTED" in result.scrubbed_text
+        # Text is PRESERVED — not scrubbed during investigation
+        assert "john@example.com" in result.scrubbed_text
 
-    def test_ssn_redaction(self):
+    def test_ssn_detected_but_preserved(self):
+        """SSNs are detected but preserved during investigation."""
         harness = SafetyHarness.from_defaults()
         result = harness.post_check("SSN: 123-45-6789")
-        assert "123-45-6789" not in result.scrubbed_text
         assert result.pii_found > 0
+        # Raw data preserved for investigation
+        assert "123-45-6789" in result.scrubbed_text
 
     def test_clean_text_passes_through(self):
         harness = SafetyHarness.from_defaults()
@@ -154,6 +163,64 @@ class TestSafetyHarnessPostCheck:
         result = harness.post_check(text)
         assert result.scrubbed_text == text
         assert result.safe
+
+
+class TestPublicationMode:
+    """Publication boundary — full enforcement."""
+
+    def test_scrub_for_publication_redacts_pii(self):
+        harness = SafetyHarness.from_defaults()
+        result = harness.scrub_for_publication(
+            "Contact John at john@example.com or 555-123-4567"
+        )
+        assert result.pii_found > 0
+        assert "REDACTED" in result.scrubbed_text
+        assert "john@example.com" not in result.scrubbed_text
+
+    def test_scrub_for_publication_redacts_ssn(self):
+        harness = SafetyHarness.from_defaults()
+        result = harness.scrub_for_publication("SSN: 123-45-6789")
+        assert "123-45-6789" not in result.scrubbed_text
+        assert result.pii_found > 0
+
+    def test_scrub_for_publication_clean_text(self):
+        harness = SafetyHarness.from_defaults()
+        text = "Acme Corporation registered in Delaware in 2005"
+        result = harness.scrub_for_publication(text)
+        assert result.scrubbed_text == text
+        assert result.pii_found == 0
+
+    def test_scrub_dict_for_publication(self):
+        harness = SafetyHarness.from_defaults()
+        data = {
+            "entity": "Acme Corp",
+            "contact": "john@example.com",
+            "nested": {"phone": "555-123-4567"},
+        }
+        scrubbed = harness.scrub_dict_for_publication(data)
+        result_str = json.dumps(scrubbed)
+        assert "john@example.com" not in result_str
+
+    def test_disabled_harness_no_publication_scrub(self):
+        harness = SafetyHarness.disabled()
+        result = harness.scrub_for_publication("SSN: 123-45-6789")
+        assert result.scrubbed_text == "SSN: 123-45-6789"
+        assert result.pii_found == 0
+
+    def test_investigate_vs_publish_same_text(self):
+        """Same text, different modes — investigate preserves, publish scrubs."""
+        harness = SafetyHarness.from_defaults()
+        text = "Email: jane@example.com, SSN: 987-65-4321"
+
+        # Investigate mode — raw preserved
+        inv_result = harness.post_check(text, tool="search")
+        assert "jane@example.com" in inv_result.scrubbed_text
+        assert inv_result.pii_found > 0
+
+        # Publish mode — scrubbed
+        pub_result = harness.scrub_for_publication(text)
+        assert "jane@example.com" not in pub_result.scrubbed_text
+        assert pub_result.pii_found > 0
 
 
 class TestSafetyHarnessCircuitBreaker:
@@ -199,10 +266,13 @@ class TestSafetyHarnessAudit:
         harness = SafetyHarness.from_defaults()
         harness.pre_check(tool="t1", args={})
         harness.post_check("text", tool="t1")
+        harness.scrub_for_publication("email: test@test.com")
 
         summary = harness.audit_summary()
-        assert summary["total_checks"] >= 2
+        assert summary["total_checks"] >= 3
         assert isinstance(summary["events"], list)
+        assert "observations" in summary
+        assert "publication_scrubs" in summary
 
 
 # ===================================================================
@@ -300,37 +370,52 @@ class TestAgentLoopSafetyWiring:
         assert not agent._harness._enable_monitor
 
     @pytest.mark.asyncio
-    async def test_blocked_tool_skipped(self):
-        """When shield blocks a tool, it shouldn't execute."""
-        config = AgentConfig(max_turns=3, enable_safety=True)
+    async def test_capsule_blocks_tool(self):
+        """Intent capsule blocks still work — operator mandate is enforced."""
+        from unittest.mock import MagicMock
+        capsule = MagicMock()
+        capsule.constraints = {"allowed_tools": ["generate_report"]}
+
+        config = AgentConfig(max_turns=2, enable_safety=True)
         agent = InvestigationAgent(config)
+        agent._harness._intent_capsule = capsule
 
-        # Trip the circuit breaker for search_entities
-        for _ in range(5):
-            agent._harness._shield.circuit_breaker.record_result(
-                "search_entities", success=False
-            )
+        # Direct pre-check: capsule blocks search_entities
+        verdict = agent._harness.pre_check(tool="search_entities", args={})
+        assert verdict.blocked
+        assert "not in capsule" in verdict.reason
 
-        result = await agent.investigate("test blocked tool")
-
-        # The investigation should still complete (graceful degradation)
-        assert isinstance(result, Session)
-        assert result.goal == "test blocked tool"
+        # Capsule allows generate_report
+        verdict = agent._harness.pre_check(tool="generate_report", args={})
+        assert verdict.allowed
 
     @pytest.mark.asyncio
-    async def test_pii_scrubbed_from_results(self):
-        """PII redactor should scrub tool output."""
+    async def test_pii_preserved_during_investigation(self):
+        """PII is NOT scrubbed during investigation — raw data preserved."""
         config = AgentConfig(enable_safety=True, max_turns=1)
         agent = InvestigationAgent(config)
 
-        # Direct test of _post_check_result
-        result = agent._post_check_result(
-            "search_entities",
-            {"entities": [{"name": "John Smith", "email": "john@example.com", "note": "Call 555-123-4567"}]},
+        # The harness post_check should observe but not scrub
+        result = agent._harness.post_check(
+            "Entity contact: john@example.com, SSN: 123-45-6789",
+            tool="search_entities",
         )
-        # The email and phone should be redacted
-        result_str = json.dumps(result)
-        assert "john@example.com" not in result_str or "REDACTED" in result_str
+        assert "john@example.com" in result.scrubbed_text
+        assert "123-45-6789" in result.scrubbed_text
+        assert result.pii_found > 0
+
+    @pytest.mark.asyncio
+    async def test_pii_scrubbed_at_publication(self):
+        """PII IS scrubbed when publishing — publication boundary enforces."""
+        config = AgentConfig(enable_safety=True, max_turns=1)
+        agent = InvestigationAgent(config)
+
+        result = agent._harness.scrub_for_publication(
+            "Entity contact: john@example.com, SSN: 123-45-6789"
+        )
+        assert "john@example.com" not in result.scrubbed_text
+        assert "123-45-6789" not in result.scrubbed_text
+        assert result.pii_found > 0
 
     @pytest.mark.asyncio
     async def test_safety_audit_attached(self):
