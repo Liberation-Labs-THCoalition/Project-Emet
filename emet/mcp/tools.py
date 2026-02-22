@@ -458,9 +458,9 @@ EMET_TOOLS: list[MCPToolDef] = [
 class EmetToolExecutor:
     """Executes MCP tool calls by delegating to Emet's existing modules.
 
-    This is intentionally thin glue code.  Each tool method imports
-    and calls the relevant existing module rather than reimplementing
-    any logic.
+    Maintains a resource pool of adapter instances so they're created
+    once and reused across tool calls within a session, rather than
+    spinning up fresh connections on every invocation.
     """
 
     def __init__(self) -> None:
@@ -478,6 +478,18 @@ class EmetToolExecutor:
             "list_workflows": self._list_workflows,
             "run_workflow": self._run_workflow,
         }
+        # Connection pool — lazily initialized, reused across calls
+        self._pool: dict[str, Any] = {}
+
+    def _get_or_create(self, key: str, factory: Callable[[], Any]) -> Any:
+        """Get a cached adapter instance, or create one."""
+        if key not in self._pool:
+            self._pool[key] = factory()
+        return self._pool[key]
+
+    def reset_pool(self) -> None:
+        """Clear all cached adapter instances."""
+        self._pool.clear()
 
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute an MCP tool call."""
@@ -529,14 +541,19 @@ class EmetToolExecutor:
         """Federated entity search."""
         from emet.ftm.external.federation import FederatedSearch, FederationConfig
 
-        config = FederationConfig()
         if sources:
+            # Custom source set — create per-call (rare path)
+            config = FederationConfig()
             config.enable_opensanctions = "opensanctions" in sources
             config.enable_opencorporates = "opencorporates" in sources
             config.enable_icij = "icij" in sources
             config.enable_gleif = "gleif" in sources
-
-        federation = FederatedSearch(config=config)
+            federation = FederatedSearch(config=config)
+        else:
+            # Default config — reuse pooled instance
+            federation = self._get_or_create(
+                "federation", lambda: FederatedSearch(config=FederationConfig())
+            )
         et = entity_type if entity_type != "Any" else ""
         results = await federation.search_entity(query, entity_type=et, limit=limit)
         return {
@@ -555,7 +572,9 @@ class EmetToolExecutor:
         """SpiderFoot OSINT reconnaissance."""
         from emet.ftm.external.spiderfoot import SpiderFootClient, SpiderFootConfig
 
-        client = SpiderFootClient(SpiderFootConfig())
+        client = self._get_or_create(
+            "spiderfoot", lambda: SpiderFootClient(SpiderFootConfig())
+        )
         scan_result = await client.scan(
             target=target,
             scan_type=scan_type,
@@ -572,7 +591,7 @@ class EmetToolExecutor:
         """Graph analytics on entity network."""
         from emet.graph.engine import GraphEngine
 
-        engine = GraphEngine()
+        engine = self._get_or_create("graph_engine", GraphEngine)
         if entity_ids:
             engine.load_entities(entity_ids)
 
@@ -594,7 +613,7 @@ class EmetToolExecutor:
         """Corporate ownership tracing."""
         from emet.ftm.external.federation import FederatedSearch
 
-        federation = FederatedSearch()
+        federation = self._get_or_create("federation_default", FederatedSearch)
         results = await federation.search_entity(
             entity_name, entity_type="Company", limit=10
         )
@@ -615,7 +634,7 @@ class EmetToolExecutor:
         """Sanctions screening via OpenSanctions."""
         from emet.ftm.external.adapters import YenteClient
 
-        client = YenteClient()
+        client = self._get_or_create("yente", YenteClient)
         results = []
         for entity in entities:
             matches = await client.match(
@@ -643,7 +662,9 @@ class EmetToolExecutor:
         """Blockchain address investigation."""
         from emet.ftm.external.blockchain import BlockchainAdapter, BlockchainConfig
 
-        adapter = BlockchainAdapter(BlockchainConfig())
+        adapter = self._get_or_create(
+            "blockchain", lambda: BlockchainAdapter(BlockchainConfig())
+        )
         if chain == "ethereum":
             result = await adapter.get_eth_address(address)
         else:
@@ -665,7 +686,7 @@ class EmetToolExecutor:
         """Register entity for monitoring."""
         from emet.monitoring import ChangeDetector
 
-        detector = ChangeDetector()
+        detector = self._get_or_create("change_detector", ChangeDetector)
         detector.register_query(entity_name, entity_type=entity_type)
         return {
             "registered": True,
@@ -682,7 +703,7 @@ class EmetToolExecutor:
         """Check monitoring alerts."""
         from emet.monitoring import ChangeDetector
 
-        detector = ChangeDetector()
+        detector = self._get_or_create("change_detector", ChangeDetector)
         alerts = await detector.check_all()
 
         if entity_name:
@@ -720,7 +741,7 @@ class EmetToolExecutor:
         """Generate investigation report."""
         from emet.export.markdown import MarkdownReporter
 
-        reporter = MarkdownReporter()
+        reporter = self._get_or_create("markdown_reporter", MarkdownReporter)
         report = reporter.generate(
             title=title,
             entity_ids=entity_ids or [],
@@ -741,18 +762,18 @@ class EmetToolExecutor:
         limit: int = 50,
     ) -> dict[str, Any]:
         """Document ingestion from Datashare/DocumentCloud."""
-        from emet.ftm.external.document_sources import (
-            DatashareClient,
-            DocumentCloudClient,
-            DatashareConfig,
-            DocumentCloudConfig,
-        )
 
         if source == "datashare":
-            client = DatashareClient(DatashareConfig())
+            from emet.ftm.external.document_sources import DatashareClient, DatashareConfig
+            client = self._get_or_create(
+                "datashare", lambda: DatashareClient(DatashareConfig())
+            )
             docs = await client.search(query=query, project_id=project_id, limit=limit)
         elif source == "documentcloud":
-            client = DocumentCloudClient(DocumentCloudConfig())
+            from emet.ftm.external.document_sources import DocumentCloudClient, DocumentCloudConfig
+            client = self._get_or_create(
+                "documentcloud", lambda: DocumentCloudClient(DocumentCloudConfig())
+            )
             docs = await client.search(query=query, project_id=project_id, limit=limit)
         else:
             return {"error": f"Unknown source: {source}"}
@@ -770,8 +791,12 @@ class EmetToolExecutor:
         """List available workflow templates."""
         from emet.workflows.registry import WorkflowRegistry
 
-        registry = WorkflowRegistry()
-        registry.load_builtins()
+        def _make_registry():
+            r = WorkflowRegistry()
+            r.load_builtins()
+            return r
+
+        registry = self._get_or_create("workflow_registry", _make_registry)
         workflows = registry.list_workflows()
 
         if category:
@@ -792,8 +817,12 @@ class EmetToolExecutor:
         from emet.workflows.registry import WorkflowRegistry
         from emet.workflows.engine import WorkflowEngine
 
-        registry = WorkflowRegistry()
-        registry.load_builtins()
+        def _make_registry():
+            r = WorkflowRegistry()
+            r.load_builtins()
+            return r
+
+        registry = self._get_or_create("workflow_registry", _make_registry)
 
         workflow = registry.get(workflow_name)
         if workflow is None:

@@ -44,6 +44,20 @@ def main() -> None:
     inv.add_argument("--no-sanctions", action="store_true", help="Skip auto sanctions screening")
     inv.add_argument("--no-news", action="store_true", help="Skip auto news check")
     inv.add_argument("--output", "-o", help="Save report to file")
+    inv.add_argument(
+        "--dry-run", action="store_true",
+        help="Show investigation plan without executing tools",
+    )
+    inv.add_argument(
+        "--interactive", "-i", action="store_true",
+        help="Pause before each tool call for approval",
+    )
+    inv.add_argument(
+        "--save", "-s", help="Auto-save session to this path",
+    )
+    inv.add_argument(
+        "--resume", help="Resume from a saved session file",
+    )
 
     # search
     srch = subparsers.add_parser("search", help="Quick entity search")
@@ -117,16 +131,211 @@ async def _cmd_investigate(args: argparse.Namespace) -> None:
         auto_news_check=not args.no_news,
         llm_provider=args.llm,
         verbose=args.verbose,
+        persist_path=args.save or "",
+        generate_graph=True,
     )
 
+    # --- Resume mode ---
+    if args.resume:
+        from emet.agent.persistence import load_session
+        session = load_session(args.resume)
+        print(f"📂 Resumed session: {session.goal}")
+        print(f"   {len(session.findings)} findings, {len(session.entities)} entities")
+        _print_session_results(session)
+        return
+
     agent = InvestigationAgent(config=config)
+
+    # --- Dry-run mode ---
+    if args.dry_run:
+        await _cmd_investigate_dry_run(agent, args)
+        return
+
+    # --- Interactive mode ---
+    if args.interactive:
+        await _cmd_investigate_interactive(agent, args)
+        return
+
+    # --- Standard mode ---
     print(f"🔍 Starting investigation: {args.goal}")
     print(f"   Max turns: {config.max_turns} | LLM: {config.llm_provider}")
     print()
 
     session = await agent.investigate(args.goal)
+    _print_session_results(session)
 
-    # Print results
+    # Save output
+    if args.output:
+        _save_report(session, args.output)
+
+
+async def _cmd_investigate_dry_run(
+    agent: Any, args: argparse.Namespace
+) -> None:
+    """Show investigation plan without executing any tools.
+
+    Runs the LLM decision loop but skips actual tool execution,
+    showing what would happen at each step.
+    """
+    from emet.agent.session import Session
+
+    print(f"🔍 DRY RUN: {args.goal}")
+    print(f"   No tools will be executed. Showing planned actions.\n")
+
+    session = Session(goal=args.goal)
+    session.record_reasoning(f"[DRY RUN] Planning: {args.goal}")
+
+    turn = 0
+    while turn < args.max_turns:
+        turn += 1
+        action = await agent._decide_next_action(session)
+
+        if action["tool"] == "conclude":
+            print(f"  Turn {turn}: 🏁 CONCLUDE")
+            print(f"           {action.get('reasoning', '')}")
+            break
+
+        tool = action["tool"]
+        tool_args = action.get("args", {})
+        reasoning = action.get("reasoning", "")
+
+        print(f"  Turn {turn}: 🔧 {tool}")
+        print(f"           Reason: {reasoning}")
+        if tool_args:
+            args_preview = json.dumps(tool_args, default=str)
+            if len(args_preview) > 120:
+                args_preview = args_preview[:117] + "..."
+            print(f"           Args:   {args_preview}")
+
+        # Safety observation (still runs in dry-run for visibility)
+        verdict = agent._harness.pre_check(tool=tool, args=tool_args)
+        if verdict.observations:
+            for obs in verdict.observations:
+                print(f"           ⚠️  {obs}")
+        if verdict.blocked:
+            print(f"           🚫 BLOCKED: {verdict.reason}")
+
+        # Record as if it happened (so the LLM can plan the next step)
+        session.record_tool_use(tool, tool_args, {"_dry_run": True})
+        session.record_reasoning(f"[DRY RUN] Would call {tool}: {reasoning}")
+        print()
+
+    print(f"\nDry run complete. {turn} steps planned.")
+    audit = agent._harness.audit_summary()
+    if audit["observations"]:
+        print(f"Safety observations: {audit['observations']}")
+
+
+async def _cmd_investigate_interactive(
+    agent: Any, args: argparse.Namespace
+) -> None:
+    """Interactive investigation — pause before each tool call.
+
+    Shows each proposed action and waits for user approval before
+    executing. Supports skip, modify args, and abort.
+    """
+    from emet.agent.session import Session
+
+    print(f"🔍 INTERACTIVE: {args.goal}")
+    print(f"   You'll approve each tool call. Commands: y/n/s(kip)/q(uit)\n")
+
+    session = Session(goal=args.goal)
+    session.record_reasoning(f"Starting interactive investigation: {args.goal}")
+
+    # Phase 1: Initial search (always runs)
+    print("  Phase 1: Initial search...")
+    await agent._initial_search(session)
+    entities_found = len(session.entities)
+    print(f"  Found {entities_found} entities, {len(session.findings)} findings\n")
+
+    # Phase 2: Interactive loop
+    turn = 0
+    while turn < args.max_turns:
+        turn += 1
+        action = await agent._decide_next_action(session)
+
+        if action["tool"] == "conclude":
+            print(f"  Turn {turn}: Agent wants to conclude.")
+            print(f"  Reason: {action.get('reasoning', '')}")
+            choice = input("  Accept? [Y/n/continue] ").strip().lower()
+            if choice in ("", "y", "yes"):
+                break
+            if choice == "continue":
+                session.record_reasoning("User overrode conclusion, continuing.")
+                continue
+            break
+
+        tool = action["tool"]
+        tool_args = action.get("args", {})
+        reasoning = action.get("reasoning", "")
+
+        # Show proposal
+        print(f"  Turn {turn}: 🔧 {tool}")
+        print(f"  Reason: {reasoning}")
+        if tool_args:
+            args_str = json.dumps(tool_args, indent=2, default=str)
+            for line in args_str.split("\n"):
+                print(f"    {line}")
+
+        # Safety check
+        verdict = agent._harness.pre_check(tool=tool, args=tool_args)
+        if verdict.observations:
+            for obs in verdict.observations:
+                print(f"  ⚠️  {obs}")
+        if verdict.blocked:
+            print(f"  🚫 BLOCKED by safety harness: {verdict.reason}")
+            session.record_reasoning(f"BLOCKED: {verdict.reason}")
+            continue
+
+        # Get approval
+        choice = input("  Execute? [Y/n/s(kip)/q(uit)] ").strip().lower()
+
+        if choice in ("q", "quit"):
+            session.record_reasoning("User aborted investigation.")
+            print("\n  Investigation aborted by user.")
+            break
+
+        if choice in ("n", "no", "s", "skip"):
+            session.record_reasoning(f"User skipped {tool}: {reasoning}")
+            print(f"  Skipped.\n")
+            continue
+
+        # Execute
+        print(f"  Executing {tool}...")
+        result = await agent._execute_action(session, action)
+        await agent._process_result(session, action, result)
+
+        # Brief summary
+        new_entities = len(session.entities) - entities_found
+        entities_found = len(session.entities)
+        if new_entities > 0:
+            print(f"  → +{new_entities} entities")
+        if session.findings:
+            latest = session.findings[-1]
+            print(f"  → Finding: {latest.summary[:80]}")
+        print()
+
+        # Check leads
+        if not session.get_open_leads() and turn >= 3:
+            print("  No open leads remaining.")
+            break
+
+    # Phase 3: Report
+    print("\n  Generating report...")
+    await agent._generate_report(session)
+
+    # Phase 4: Graph
+    if agent._config.generate_graph:
+        agent._generate_investigation_graph(session)
+
+    _print_session_results(session)
+
+    if args.output:
+        _save_report(session, args.output)
+
+
+def _print_session_results(session: Any) -> None:
+    """Print investigation results."""
     print("\n" + "=" * 60)
     print(f"INVESTIGATION COMPLETE — {session.goal}")
     print("=" * 60)
@@ -153,20 +362,33 @@ async def _cmd_investigate(args: argparse.Namespace) -> None:
         for step in session.reasoning_trace:
             print(f"  → {step}")
 
-    # Save output
-    if args.output:
-        output = {
-            "summary": summary,
-            "findings": [
-                {"source": f.source, "summary": f.summary, "confidence": f.confidence}
-                for f in session.findings
-            ],
-            "entities": list(session.entities.values()),
-            "reasoning": session.reasoning_trace,
-        }
-        with open(args.output, "w") as fp:
-            json.dump(output, fp, indent=2)
-        print(f"\nSaved to {args.output}")
+    # Safety audit
+    if hasattr(session, '_safety_audit') and session._safety_audit:
+        audit = session._safety_audit
+        if audit.get("observations", 0) > 0 or audit.get("blocks", 0) > 0:
+            print(f"\nSAFETY AUDIT:")
+            print(f"  Checks:       {audit['total_checks']}")
+            print(f"  Observations: {audit.get('observations', 0)}")
+            print(f"  Blocks:       {audit['blocks']}")
+            if audit.get("pii_detections", 0):
+                print(f"  PII detected: {audit['pii_detections']}")
+
+
+def _save_report(session: Any, path: str) -> None:
+    """Save investigation report to JSON."""
+    summary = session.summary()
+    output = {
+        "summary": summary,
+        "findings": [
+            {"source": f.source, "summary": f.summary, "confidence": f.confidence}
+            for f in session.findings
+        ],
+        "entities": list(session.entities.values()),
+        "reasoning": session.reasoning_trace,
+    }
+    with open(path, "w") as fp:
+        json.dump(output, fp, indent=2)
+    print(f"\nSaved to {path}")
 
 
 async def _cmd_search(args: argparse.Namespace) -> None:

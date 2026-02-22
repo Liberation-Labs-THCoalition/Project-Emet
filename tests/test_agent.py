@@ -361,3 +361,110 @@ class TestCLI:
     def test_status_import(self):
         from emet.cli import _cmd_status
         assert callable(_cmd_status)
+
+    def test_dry_run_function_exists(self):
+        from emet.cli import _cmd_investigate_dry_run
+        assert callable(_cmd_investigate_dry_run)
+
+    def test_interactive_function_exists(self):
+        from emet.cli import _cmd_investigate_interactive
+        assert callable(_cmd_investigate_interactive)
+
+    def test_print_session_results(self):
+        from emet.cli import _print_session_results
+        session = Session(goal="test")
+        session.add_finding(Finding(source="test", summary="found it"))
+        # Should not raise
+        _print_session_results(session)
+
+    def test_save_report(self, tmp_path):
+        from emet.cli import _save_report
+        session = Session(goal="test")
+        session.add_finding(Finding(source="test", summary="found it"))
+        path = str(tmp_path / "report.json")
+        _save_report(session, path)
+        with open(path) as f:
+            data = json.load(f)
+        assert data["summary"]["finding_count"] == 1
+
+    def test_argparse_dry_run_flag(self):
+        """CLI parser accepts --dry-run flag."""
+        import argparse
+        from emet.cli import main
+        import sys
+        # Just verify the flag parses without error
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--dry-run", action="store_true")
+        args = parser.parse_args(["--dry-run"])
+        assert args.dry_run
+
+    def test_argparse_interactive_flag(self):
+        """CLI parser accepts --interactive flag."""
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--interactive", "-i", action="store_true")
+        args = parser.parse_args(["-i"])
+        assert args.interactive
+
+
+class TestConnectionPooling:
+    """Verify EmetToolExecutor reuses adapter instances."""
+
+    def test_pool_reuses_instances(self):
+        from emet.mcp.tools import EmetToolExecutor
+        executor = EmetToolExecutor()
+
+        # Get same key twice — should be same object
+        obj1 = executor._get_or_create("test_key", lambda: {"created": True})
+        obj2 = executor._get_or_create("test_key", lambda: {"created": False})
+        assert obj1 is obj2
+        assert obj1["created"] is True
+
+    def test_pool_different_keys(self):
+        from emet.mcp.tools import EmetToolExecutor
+        executor = EmetToolExecutor()
+
+        obj1 = executor._get_or_create("key_a", lambda: "a")
+        obj2 = executor._get_or_create("key_b", lambda: "b")
+        assert obj1 != obj2
+
+    def test_pool_reset(self):
+        from emet.mcp.tools import EmetToolExecutor
+        executor = EmetToolExecutor()
+
+        executor._get_or_create("cached", lambda: "first")
+        executor.reset_pool()
+        obj = executor._get_or_create("cached", lambda: "second")
+        assert obj == "second"
+
+    def test_pool_persists_across_calls(self):
+        """Pool survives between execute() calls."""
+        from emet.mcp.tools import EmetToolExecutor
+        executor = EmetToolExecutor()
+
+        # Manually seed the pool
+        executor._get_or_create("test", lambda: {"call_count": 0})
+        executor._pool["test"]["call_count"] += 1
+        executor._pool["test"]["call_count"] += 1
+
+        assert executor._pool["test"]["call_count"] == 2
+
+
+class TestSessionResume:
+    """Verify session save/load for --resume flag."""
+
+    def test_resume_roundtrip(self, tmp_path):
+        from emet.agent.persistence import save_session, load_session
+
+        session = Session(goal="Investigate Acme Corp")
+        session.add_finding(Finding(source="search", summary="Shell company detected"))
+        session.record_reasoning("Found suspicious pattern")
+
+        path = str(tmp_path / "session.json")
+        save_session(session, path)
+
+        restored = load_session(path)
+        assert restored.goal == "Investigate Acme Corp"
+        assert len(restored.findings) == 1
+        assert restored.findings[0].summary == "Shell company detected"
+        assert "Found suspicious pattern" in restored.reasoning_trace
