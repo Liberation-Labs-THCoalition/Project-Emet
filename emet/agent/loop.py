@@ -74,6 +74,31 @@ AGENT_TOOLS = {
 
 
 # ---------------------------------------------------------------------------
+# System prompt for LLM-powered decision making
+# ---------------------------------------------------------------------------
+
+INVESTIGATION_SYSTEM_PROMPT = """You are an investigative journalist's AI research assistant. Your job is to \
+direct an investigation by choosing which tools to call next, based on the current state of evidence.
+
+PRINCIPLES:
+- Follow the money. Corporate ownership chains and financial flows reveal hidden connections.
+- Verify through multiple sources. One data point is a hint; corroboration is evidence.
+- Pursue the highest-value leads first. Sanctions hits and ownership anomalies outrank general searches.
+- Know when to stop. Conclude when findings answer the goal or when remaining leads are low-priority.
+- Never fabricate. If a tool returns no data, note the gap — don't invent results.
+
+STRATEGY:
+1. Broad entity search first to identify key players
+2. Sanctions/PEP screening for flagged entities
+3. Ownership tracing for corporate structures
+4. OSINT for digital footprints when warranted
+5. Blockchain investigation only when crypto addresses surface
+6. Conclude and synthesize when the picture is clear
+
+You respond with ONLY a single JSON object representing the next action. No explanations outside the JSON."""
+
+
+# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
@@ -117,6 +142,9 @@ class InvestigationAgent:
             self._harness = SafetyHarness.from_defaults()
         else:
             self._harness = SafetyHarness.disabled()
+        # LLM client — created once, reused across turns
+        self._llm_client: Any = None  # Lazy-initialized
+        self._cost_tracker: Any = None
 
     async def investigate(self, goal: str) -> Session:
         """Run an investigation from a natural-language goal.
@@ -274,38 +302,107 @@ class InvestigationAgent:
         # Heuristic fallback: follow highest-priority open lead
         return self._heuristic_decide(session)
 
-    async def _llm_decide(self, session: Session) -> dict[str, Any] | None:
-        """Ask the LLM what to do next."""
+    def _get_llm_client(self) -> Any:
+        """Get or create the cached LLM client.
+
+        Returns None if the provider is unavailable (e.g. no API key).
+        The client is created once and reused for the duration of the
+        investigation, maintaining cost tracking across turns.
+        """
+        if self._llm_client is not None:
+            return self._llm_client
+
         try:
             from emet.cognition.llm_factory import create_llm_client_sync
-            client = create_llm_client_sync(self._config.llm_provider)
-        except Exception:
+            from emet.cognition.model_router import CostTracker
+
+            self._cost_tracker = CostTracker()
+            self._llm_client = create_llm_client_sync(
+                provider=self._config.llm_provider,
+                cost_tracker=self._cost_tracker,
+            )
+            return self._llm_client
+        except Exception as exc:
+            logger.debug("Cannot create LLM client: %s", exc)
+            return None
+
+    async def _llm_decide(self, session: Session) -> dict[str, Any] | None:
+        """Ask the LLM what to do next.
+
+        Uses the investigation context and available tools to prompt the
+        LLM for a structured JSON action. Returns None if the LLM is
+        unavailable or the response can't be parsed, triggering heuristic
+        fallback.
+        """
+        client = self._get_llm_client()
+        if client is None:
             return None
 
         context = session.context_for_llm()
         tools_desc = "\n".join(
             f"  - {name}: {info['description']}"
+            f"\n    Parameters: {', '.join(info['params'])}"
             for name, info in AGENT_TOOLS.items()
         )
+
+        system = INVESTIGATION_SYSTEM_PROMPT
 
         prompt = f"""{context}
 
 AVAILABLE TOOLS:
 {tools_desc}
 
-Based on the investigation state above, decide the next action.
-Respond with ONLY a JSON object:
-{{"tool": "<tool_name>", "args": {{}}, "reasoning": "<why>"}}
+Based on the investigation state above, decide the SINGLE next action.
+Respond with ONLY a JSON object — no markdown, no commentary:
+{{"tool": "<tool_name>", "args": {{<relevant_params>}}, "reasoning": "<one sentence why>"}}
 
-If the investigation has enough information, use "conclude"."""
+Rules:
+- Pick the tool that fills the biggest gap in your current knowledge
+- If you have open leads, consider following the highest-priority one
+- If findings are sufficient to answer the goal, use "conclude"
+- Don't repeat the same tool call with the same arguments
+- Each tool call costs budget — be efficient"""
 
         try:
-            response = await client.generate(prompt)
+            response = await client.complete(
+                prompt,
+                system=system,
+                max_tokens=300,
+                temperature=0.2,  # Low temp for structured decisions
+                tier="balanced",
+            )
             text = response.text.strip()
-            # Parse JSON from response
+
+            # Parse JSON from response (handles preamble/markdown fences)
+            if "```" in text:
+                # Strip markdown code fences
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+                text = text.strip()
+
             if "{" in text:
                 json_str = text[text.index("{"):text.rindex("}") + 1]
-                return json.loads(json_str)
+                action = json.loads(json_str)
+
+                # Validate tool name
+                tool = action.get("tool", "")
+                if tool not in AGENT_TOOLS:
+                    logger.debug("LLM suggested unknown tool %r", tool)
+                    return None
+
+                # Ensure args is a dict
+                if not isinstance(action.get("args"), dict):
+                    action["args"] = {}
+
+                logger.info(
+                    "LLM decision (turn %d): %s — %s",
+                    session.turn_count,
+                    action["tool"],
+                    action.get("reasoning", "")[:80],
+                )
+                return action
+
         except Exception as exc:
             logger.debug("LLM decision failed: %s", exc)
 
@@ -473,22 +570,36 @@ If the investigation has enough information, use "conclude"."""
 
         This is a publication boundary — PII is scrubbed from the
         report output before it's attached to the session.
+
+        When an LLM is available, it synthesizes findings into a
+        coherent narrative. Otherwise falls back to the template-based
+        generate_report tool.
         """
         try:
-            entity_summaries = []
-            for eid, entity in list(session.entities.items())[:50]:
-                names = entity.get("properties", {}).get("name", [])
-                schema = entity.get("schema", "")
-                entity_summaries.append(f"[{schema}] {names[0] if names else eid}")
-
-            result = await self._executor.execute(
-                "generate_report",
-                {
-                    "title": f"Investigation: {session.goal}",
+            # Try LLM-powered synthesis first
+            synthesized = await self._llm_synthesize_report(session)
+            if synthesized:
+                result = {
+                    "report": synthesized,
                     "format": "markdown",
-                    "entities": list(session.entities.values())[:50],
-                },
-            )
+                    "source": "llm_synthesis",
+                }
+            else:
+                # Fallback: template-based report from tool
+                entity_summaries = []
+                for eid, entity in list(session.entities.items())[:50]:
+                    names = entity.get("properties", {}).get("name", [])
+                    schema = entity.get("schema", "")
+                    entity_summaries.append(f"[{schema}] {names[0] if names else eid}")
+
+                result = await self._executor.execute(
+                    "generate_report",
+                    {
+                        "title": f"Investigation: {session.goal}",
+                        "format": "markdown",
+                        "entities": list(session.entities.values())[:50],
+                    },
+                )
 
             # Publication boundary: scrub PII from report output
             if self._config.enable_pii_redaction:
@@ -496,10 +607,108 @@ If the investigation has enough information, use "conclude"."""
 
             session.record_tool_use("generate_report", {"title": session.goal}, result)
             session.record_reasoning("Report generated (PII scrubbed for publication).")
+
+            # Record cost summary if LLM was used
+            if self._cost_tracker:
+                cost_info = self._cost_tracker.summary()
+                session.record_reasoning(
+                    f"LLM cost: ${cost_info['cumulative']:.4f} "
+                    f"({cost_info['call_count']} calls, "
+                    f"${cost_info['remaining']:.4f} budget remaining)"
+                )
+
         except Exception as exc:
             session.record_reasoning(f"Report generation failed: {exc}")
+
+    async def _llm_synthesize_report(self, session: Session) -> str | None:
+        """Use the LLM to synthesize findings into a narrative report.
+
+        Returns the markdown report text, or None if LLM unavailable.
+        """
+        client = self._get_llm_client()
+        if client is None:
+            return None
+
+        # Don't use LLM synthesis for stub provider — it produces canned text
+        try:
+            from emet.cognition.llm_base import LLMProvider
+            if hasattr(client, 'provider') and client.provider == LLMProvider.STUB:
+                return None
+        except Exception:
+            pass
+
+        # Build synthesis prompt from session data
+        findings_text = "\n".join(
+            f"- [{f.source}] (confidence: {f.confidence:.0%}) {f.summary}"
+            for f in session.findings
+        )
+
+        entities_text = "\n".join(
+            f"- [{entity.get('schema', '?')}] "
+            f"{entity.get('properties', {}).get('name', [eid])[0] if entity.get('properties', {}).get('name') else eid}"
+            for eid, entity in list(session.entities.items())[:30]
+        )
+
+        open_leads = session.get_open_leads()
+        leads_text = "\n".join(
+            f"- [{l.priority:.0%}] {l.description}"
+            for l in open_leads[:10]
+        ) if open_leads else "None — all leads resolved."
+
+        prompt = f"""Synthesize the following investigation findings into a clear, structured report.
+
+INVESTIGATION GOAL: {session.goal}
+
+FINDINGS ({session.finding_count}):
+{findings_text or "No findings."}
+
+KEY ENTITIES ({session.entity_count}):
+{entities_text or "No entities identified."}
+
+OPEN LEADS:
+{leads_text}
+
+INVESTIGATION STATS:
+- Turns used: {session.turn_count}
+- Tools used: {', '.join(set(t['tool'] for t in session.tool_history))}
+
+Write a markdown report with these sections:
+## Summary
+A 2-3 sentence executive summary of what was found.
+
+## Key Findings
+The most important discoveries, with confidence levels.
+
+## Entity Network
+Who/what was identified and how they connect.
+
+## Open Questions
+What remains unresolved — leads not yet pursued.
+
+## Methodology
+Brief note on tools and sources used.
+
+Be factual. Only report what the findings support. Flag low-confidence items explicitly."""
+
+        try:
+            response = await client.complete(
+                prompt,
+                system="You are a report writer for investigative journalists. Write clear, factual, well-structured reports. Never fabricate details beyond what the findings state.",
+                max_tokens=2048,
+                temperature=0.3,
+                tier="balanced",
+            )
+            report = response.text.strip()
+            if len(report) > 100:  # Sanity check
+                logger.info(
+                    "LLM synthesized report: %d chars, %d input tokens, %d output tokens",
+                    len(report), response.input_tokens, response.output_tokens,
+                )
+                return report
         except Exception as exc:
-            session.record_reasoning(f"Report generation failed: {exc}")
+            logger.debug("LLM report synthesis failed: %s", exc)
+
+        return None
 
     def _generate_investigation_graph(self, session: Session) -> None:
         """Build a relationship graph from investigation findings.

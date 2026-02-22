@@ -164,6 +164,7 @@ def _build_stub_client() -> StubClient:
 
 
 def create_llm_client_sync(
+    provider: str | None = None,
     cost_tracker: CostTracker | None = None,
 ) -> LLMClient:
     """Create an LLM client synchronously (for application startup).
@@ -172,25 +173,33 @@ def create_llm_client_sync(
     providers (that would require async).  The fallback wrapper will
     handle unavailable providers at call time.
 
+    Parameters
+    ----------
+    provider:
+        Explicit provider name (``"ollama"``, ``"anthropic"``, ``"stub"``).
+        Overrides ``settings.LLM_PROVIDER`` when given.
+    cost_tracker:
+        Optional cost tracker for budget enforcement.
+
     Returns
     -------
     A ``FallbackLLMClient`` if fallback is enabled, or a single
     provider client if not.
     """
-    provider = LLMProvider(settings.LLM_PROVIDER)
+    provider_enum = LLMProvider(provider or settings.LLM_PROVIDER)
     fallback_enabled = settings.LLM_FALLBACK_ENABLED
 
     # Build the requested primary client
     primary: LLMClient | None = None
-    if provider == LLMProvider.OLLAMA:
+    if provider_enum == LLMProvider.OLLAMA:
         primary = _build_ollama_client()
-    elif provider == LLMProvider.ANTHROPIC:
+    elif provider_enum == LLMProvider.ANTHROPIC:
         primary = _build_anthropic_client(cost_tracker)
-    elif provider == LLMProvider.STUB:
+    elif provider_enum == LLMProvider.STUB:
         primary = _build_stub_client()
 
     if primary is None:
-        logger.warning("Requested LLM provider %s not available", provider.value)
+        logger.warning("Requested LLM provider %s not available", provider_enum.value)
         primary = _build_stub_client()
 
     if not fallback_enabled:
@@ -200,21 +209,21 @@ def create_llm_client_sync(
     # Build the full fallback chain
     chain: list[LLMClient] = []
 
-    if provider == LLMProvider.OLLAMA:
+    if provider_enum == LLMProvider.OLLAMA:
         chain.append(primary)
         anthropic = _build_anthropic_client(cost_tracker)
         if anthropic:
             chain.append(anthropic)
         chain.append(_build_stub_client())
 
-    elif provider == LLMProvider.ANTHROPIC:
+    elif provider_enum == LLMProvider.ANTHROPIC:
         chain.append(primary)
         ollama = _build_ollama_client()
         if ollama:
             chain.append(ollama)
         chain.append(_build_stub_client())
 
-    elif provider == LLMProvider.STUB:
+    elif provider_enum == LLMProvider.STUB:
         chain.append(primary)
 
     providers_str = " → ".join(c.provider.value for c in chain)
@@ -224,6 +233,7 @@ def create_llm_client_sync(
 
 
 async def create_llm_client(
+    provider: str | None = None,
     cost_tracker: CostTracker | None = None,
 ) -> LLMClient:
     """Create an LLM client with async health checks.
@@ -232,7 +242,7 @@ async def create_llm_client(
     returning the fallback chain.  Preferred over ``create_llm_client_sync``
     when called from async context.
     """
-    client = create_llm_client_sync(cost_tracker)
+    client = create_llm_client_sync(provider=provider, cost_tracker=cost_tracker)
 
     # Log provider status
     if isinstance(client, FallbackLLMClient):
