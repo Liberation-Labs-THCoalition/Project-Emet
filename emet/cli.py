@@ -74,8 +74,14 @@ def main() -> None:
     wf.add_argument("--params", type=json.loads, default={}, help="Extra params as JSON")
 
     # serve
-    srv = subparsers.add_parser("serve", help="Start MCP server")
+    srv = subparsers.add_parser("serve", help="Start Emet server")
     srv.add_argument("--transport", default="stdio", choices=["stdio", "sse"])
+    srv.add_argument(
+        "--http", action="store_true",
+        help="Start HTTP API server (FastAPI) instead of MCP"
+    )
+    srv.add_argument("--port", type=int, default=8000, help="HTTP port (default: 8000)")
+    srv.add_argument("--host", default="0.0.0.0", help="HTTP host (default: 0.0.0.0)")
 
     # status
     subparsers.add_parser("status", help="Show system status")
@@ -476,20 +482,40 @@ async def _cmd_workflow(args: argparse.Namespace) -> None:
 
 
 def _cmd_serve(args: argparse.Namespace) -> None:
-    """Start MCP server."""
-    from emet.mcp.server import create_server
+    """Start Emet server (MCP or HTTP)."""
 
-    print(f"Starting Emet MCP server (transport: {args.transport})")
-    server = create_server()
+    if args.http:
+        # HTTP API mode
+        try:
+            import uvicorn
+        except ImportError:
+            print("uvicorn not installed. Run: pip install uvicorn")
+            sys.exit(1)
 
-    if args.transport == "stdio":
-        import mcp.server.stdio
-        asyncio.run(
-            mcp.server.stdio.run_server(server)
-        )
+        from emet.api.app import create_app
+        app = create_app()
+
+        print(f"Starting Emet HTTP API on {args.host}:{args.port}")
+        print(f"  Docs: http://{args.host}:{args.port}/docs")
+        print(f"  Health: http://{args.host}:{args.port}/api/health")
+        print(f"  Investigations: http://{args.host}:{args.port}/api/investigations")
+
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     else:
-        print(f"Transport {args.transport} not yet implemented")
-        sys.exit(1)
+        # MCP mode
+        from emet.mcp.server import create_server
+
+        print(f"Starting Emet MCP server (transport: {args.transport})")
+        server = create_server()
+
+        if args.transport == "stdio":
+            import mcp.server.stdio
+            asyncio.run(
+                mcp.server.stdio.run_server(server)
+            )
+        else:
+            print(f"Transport {args.transport} not yet implemented")
+            sys.exit(1)
 
 
 def _cmd_status() -> None:
