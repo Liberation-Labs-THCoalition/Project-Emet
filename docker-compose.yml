@@ -35,5 +35,29 @@ services:
     ports:
       - "6379:6379"
 
+  # Sprint 10a: MCP server (HTTP transport for team access)
+  mcp:
+    build: .
+    command: python -m emet.mcp.server --transport http --host 0.0.0.0 --port 9400
+    ports:
+      - "9400:9400"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://kintsugi:kintsugi@db:5432/kintsugi"
+      SPIDERFOOT_HOST: "http://spiderfoot:5001"
+    depends_on:
+      - engine
+      - spiderfoot
+
+  # Sprint 10b: SpiderFoot OSINT sidecar (200+ modules)
+  spiderfoot:
+    image: spiderfoot/spiderfoot:latest
+    ports:
+      - "5001:5001"
+    command: -l 0.0.0.0:5001
+    volumes:
+      - sfdata:/var/lib/spiderfoot
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  sfdata:

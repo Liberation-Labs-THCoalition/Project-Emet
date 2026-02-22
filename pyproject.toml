@@ -74,9 +74,18 @@ graph = [
     "python-louvain>=0.16",
     "igraph>=0.11.0",
 ]
+osint = [
+    "spiderfoot-client>=0.1.0",
+]
+mcp = [
+    "uvicorn>=0.24.0",
+]
 
 [project.urls]
 Repository = "https://github.com/Liberation-Labs-THCoalition/Project-Emet"
+
+[project.scripts]
+emet-mcp = "emet.mcp.server:cli_main"
 
 [tool.setuptools.packages.find]
 where = ["."]

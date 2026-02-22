@@ -472,4 +472,5 @@ print(f"\n{'═' * 50}")
 print(f"  RESULTS: {PASS} passed, {FAIL} failed, {PASS + FAIL} total")
 print(f"{'═' * 50}")
 
-sys.exit(0 if FAIL == 0 else 1)
+if __name__ == "__main__":
+    sys.exit(0 if FAIL == 0 else 1)

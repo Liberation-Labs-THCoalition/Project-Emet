@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    # --- SpiderFoot (OSINT sidecar — Sprint 10b) ---
+    SPIDERFOOT_HOST: str = "http://localhost:5001"
+    SPIDERFOOT_USERNAME: str = "admin"
+    SPIDERFOOT_PASSWORD: str = ""
+
+    # --- MCP Server (Sprint 10a) ---
+    MCP_HTTP_PORT: int = 9400
+
     @model_validator(mode="after")
     def _auto_shadow(self) -> "Settings":
         if self.DEPLOYMENT_TIER == "grove":

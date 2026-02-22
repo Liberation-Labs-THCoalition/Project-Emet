@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "emet-investigative": {
+      "command": "python",
+      "args": ["-m", "emet.mcp.server", "--transport", "stdio"],
+      "env": {
+        "SPIDERFOOT_HOST": "http://localhost:5001",
+        "LLM_PROVIDER": "stub"
+      }
+    }
+  }
+}
