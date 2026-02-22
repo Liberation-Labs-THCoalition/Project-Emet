@@ -68,6 +68,9 @@ class Session:
         self.tool_history: list[dict[str, Any]] = []
         self.reasoning_trace: list[str] = []
         self.turn_count: int = 0
+        # Set by agent loop after investigation
+        self._investigation_graph: Any = None
+        self._safety_audit: dict[str, Any] = {}
 
     def add_finding(self, finding: Finding) -> None:
         """Record a finding and index its entities."""

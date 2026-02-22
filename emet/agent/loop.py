@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from emet.agent.session import Session, Finding, Lead
+from emet.agent.safety_harness import SafetyHarness
 from emet.mcp.tools import EmetToolExecutor
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,14 @@ class AgentConfig:
     auto_news_check: bool = True   # Always check GDELT for targets
     llm_provider: str = "stub"     # LLM backend (stub, ollama, anthropic)
     verbose: bool = True           # Log reasoning
+    # Safety
+    enable_safety: bool = True     # Enable full safety harness
+    enable_pii_redaction: bool = True   # Scrub PII from outputs
+    enable_shield: bool = True     # Budget/rate/circuit breaker
+    # Persistence
+    persist_path: str = ""         # Auto-save session to this path
+    # Visualization
+    generate_graph: bool = True    # Generate Cytoscape graph at conclusion
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +112,11 @@ class InvestigationAgent:
     def __init__(self, config: AgentConfig | None = None) -> None:
         self._config = config or AgentConfig()
         self._executor = EmetToolExecutor()
+        # Safety harness
+        if self._config.enable_safety:
+            self._harness = SafetyHarness.from_defaults()
+        else:
+            self._harness = SafetyHarness.disabled()
 
     async def investigate(self, goal: str) -> Session:
         """Run an investigation from a natural-language goal.
@@ -130,6 +144,21 @@ class InvestigationAgent:
                 f"Turn {session.turn_count}: {action['reasoning']}"
             )
 
+            # --- Safety: pre-check ---
+            verdict = self._harness.pre_check(
+                tool=action["tool"],
+                args=action.get("args", {}),
+            )
+            if verdict.blocked:
+                session.record_reasoning(
+                    f"BLOCKED by safety harness: {verdict.reason}"
+                )
+                # Mark lead as dead end if it was lead-following
+                lead_id = action.get("lead_id")
+                if lead_id:
+                    session.resolve_lead(lead_id, "blocked")
+                continue
+
             result = await self._execute_action(session, action)
 
             await self._process_result(session, action, result)
@@ -143,6 +172,18 @@ class InvestigationAgent:
 
         # Phase 3: Generate report
         await self._generate_report(session)
+
+        # Phase 4: Generate investigation graph
+        if self._config.generate_graph:
+            self._generate_investigation_graph(session)
+
+        # Phase 5: Persist session
+        if self._config.persist_path:
+            from emet.agent.persistence import save_session
+            save_session(session, self._config.persist_path)
+
+        # Attach safety audit to session
+        session._safety_audit = self._harness.audit_summary()
 
         return session
 
@@ -308,15 +349,25 @@ If the investigation has enough information, use "conclude"."""
         session: Session,
         action: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a tool call and record it."""
+        """Execute a tool call with safety wrapping."""
         tool = action["tool"]
         args = action.get("args", {})
 
         try:
             result = await self._executor.execute(tool, args)
+
+            # Safety: report success to circuit breaker
+            self._harness.report_tool_success(tool)
+
+            # Safety: post-check (PII redaction + security scan)
+            result = self._post_check_result(tool, result)
+
             session.record_tool_use(tool, args, result)
             return result
         except Exception as exc:
+            # Safety: report failure to circuit breaker
+            self._harness.report_tool_failure(tool)
+
             error = {"error": str(exc), "tool": tool}
             session.record_tool_use(tool, args, error)
             session.record_reasoning(f"Tool {tool} failed: {exc}")
@@ -325,6 +376,22 @@ If the investigation has enough information, use "conclude"."""
             if lead_id:
                 session.resolve_lead(lead_id, "dead_end")
             return error
+
+    def _post_check_result(
+        self, tool: str, result: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Run post-check on tool result, redacting PII from string values."""
+        def scrub(obj: Any) -> Any:
+            if isinstance(obj, str) and len(obj) > 5:
+                check = self._harness.post_check(obj, tool=tool)
+                return check.scrubbed_text
+            if isinstance(obj, dict):
+                return {k: scrub(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [scrub(v) for v in obj]
+            return obj
+
+        return scrub(result)
 
     async def _process_result(
         self,
@@ -435,6 +502,33 @@ If the investigation has enough information, use "conclude"."""
             session.record_reasoning("Report generated.")
         except Exception as exc:
             session.record_reasoning(f"Report generation failed: {exc}")
+
+    def _generate_investigation_graph(self, session: Session) -> None:
+        """Build a relationship graph from investigation findings.
+
+        Uses emet.graph to create a NetworkX graph of all entities and
+        their relationships discovered during the investigation.
+        """
+        try:
+            from emet.graph.engine import GraphEngine
+
+            # Collect all entities across findings
+            all_entities = list(session.entities.values())
+            if not all_entities:
+                session.record_reasoning("Graph: no entities to graph")
+                return
+
+            engine = GraphEngine()
+            graph_result = engine.build_from_entities(all_entities)
+
+            session._investigation_graph = graph_result
+            session.record_reasoning(
+                f"Graph: {graph_result.stats.nodes_loaded} nodes, "
+                f"{graph_result.stats.edges_loaded} edges"
+            )
+
+        except Exception as exc:
+            session.record_reasoning(f"Graph generation failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
