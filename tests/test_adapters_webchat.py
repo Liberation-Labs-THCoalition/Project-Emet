@@ -798,3 +798,36 @@ class TestWebChatIntegration:
         ws_url = generator.get_websocket_url()
         assert "wss://test.emet.ai" in ws_url
         assert "widget-test-org" in ws_url
+
+
+# ---------------------------------------------------------------------------
+# Webchat → InvestigationBridge wiring
+# ---------------------------------------------------------------------------
+
+
+class TestWebchatBridgeWiring:
+    """Verify webchat routes use InvestigationBridge, not placeholder."""
+
+    def test_no_placeholder_in_routes(self):
+        """The 'not yet implemented' placeholder should be gone."""
+        import inspect
+        from emet.adapters.webchat import routes
+
+        source = inspect.getsource(routes)
+        assert "Agent processing not yet implemented" not in source
+
+    def test_routes_import_bridge(self):
+        """Routes should reference InvestigationBridge."""
+        import inspect
+        from emet.adapters.webchat import routes
+
+        source = inspect.getsource(routes)
+        assert "InvestigationBridge" in source
+
+    def test_routes_call_handle_investigate(self):
+        """Routes should call bridge.handle_investigate_command."""
+        import inspect
+        from emet.adapters.webchat import routes
+
+        source = inspect.getsource(routes)
+        assert "handle_investigate_command" in source

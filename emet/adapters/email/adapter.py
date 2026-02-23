@@ -756,10 +756,18 @@ class EmailAdapter(BaseAdapter):
         cc: list[str] | None,
         bcc: list[str] | None
     ) -> None:
-        """Send email via SendGrid API."""
-        # Placeholder for SendGrid integration
-        # In production, use sendgrid-python library
-        raise NotImplementedError("SendGrid integration pending")
+        """Send email via SendGrid API.
+
+        Coming soon — requires ``sendgrid`` package and ``SENDGRID_API_KEY``.
+        Track progress: https://github.com/your-org/project-ftm/issues/sendgrid
+        """
+        logger.warning(
+            "SendGrid provider selected but not yet integrated. "
+            "Use SMTP provider or set EMAIL_PROVIDER=smtp in .env"
+        )
+        raise NotImplementedError(
+            "SendGrid integration coming soon. Use SMTP provider for now."
+        )
 
     async def _send_via_ses(
         self,
@@ -768,10 +776,18 @@ class EmailAdapter(BaseAdapter):
         cc: list[str] | None,
         bcc: list[str] | None
     ) -> None:
-        """Send email via Amazon SES."""
-        # Placeholder for AWS SES integration
-        # In production, use boto3 SES client
-        raise NotImplementedError("SES integration pending")
+        """Send email via Amazon SES.
+
+        Coming soon — requires ``boto3`` and AWS credentials.
+        Track progress: https://github.com/your-org/project-ftm/issues/ses
+        """
+        logger.warning(
+            "SES provider selected but not yet integrated. "
+            "Use SMTP provider or set EMAIL_PROVIDER=smtp in .env"
+        )
+        raise NotImplementedError(
+            "Amazon SES integration coming soon. Use SMTP provider for now."
+        )
 
     async def _send_via_mailgun(
         self,
@@ -780,10 +796,18 @@ class EmailAdapter(BaseAdapter):
         cc: list[str] | None,
         bcc: list[str] | None
     ) -> None:
-        """Send email via Mailgun API."""
-        # Placeholder for Mailgun integration
-        # In production, use requests to Mailgun API
-        raise NotImplementedError("Mailgun integration pending")
+        """Send email via Mailgun API.
+
+        Coming soon — requires ``MAILGUN_API_KEY`` and ``MAILGUN_DOMAIN``.
+        Track progress: https://github.com/your-org/project-ftm/issues/mailgun
+        """
+        logger.warning(
+            "Mailgun provider selected but not yet integrated. "
+            "Use SMTP provider or set EMAIL_PROVIDER=smtp in .env"
+        )
+        raise NotImplementedError(
+            "Mailgun integration coming soon. Use SMTP provider for now."
+        )
 
     def __repr__(self) -> str:
         return (

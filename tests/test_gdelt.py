@@ -353,3 +353,88 @@ class TestGDELTClient:
             # Verify URL includes sourcecountry
             call_args = mock_client.get.call_args[0][0]
             assert "sourcecountry=US%2CUK" in call_args or "sourcecountry=US,UK" in call_args
+
+
+# ---------------------------------------------------------------------------
+# MCP tool wiring: monitor_entity should call GDELT + register change monitor
+# ---------------------------------------------------------------------------
+
+
+class TestMonitorEntityToolWiring:
+    """Verify monitor_entity tool calls GDELT and registers change monitoring."""
+
+    @pytest.mark.asyncio
+    async def test_monitor_entity_calls_gdelt(self):
+        """Tool should call GDELTClient.search_news_ftm, not just ChangeDetector."""
+        from emet.mcp.tools import EmetToolExecutor
+
+        executor = EmetToolExecutor()
+
+        gdelt_result = {
+            "query": "Acme Corp",
+            "article_count": 3,
+            "entity_count": 2,
+            "unique_sources": ["reuters.com", "bbc.co.uk"],
+            "average_tone": 1.5,
+            "entities": [{"id": "e1", "schema": "Article"}],
+        }
+
+        mock_gdelt = AsyncMock()
+        mock_gdelt.search_news_ftm.return_value = gdelt_result
+        executor._pool["gdelt"] = mock_gdelt
+
+        result = await executor.execute_raw(
+            "monitor_entity",
+            {"entity_name": "Acme Corp", "timespan": "7d"},
+        )
+
+        assert result["article_count"] == 3
+        assert result["monitoring_registered"] is True
+        assert len(result["unique_sources"]) == 2
+        assert result["entities"] == [{"id": "e1", "schema": "Article"}]
+        mock_gdelt.search_news_ftm.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_monitor_entity_gdelt_failure_graceful(self):
+        """If GDELT fails, tool should still register monitoring and return 0 articles."""
+        from emet.mcp.tools import EmetToolExecutor
+
+        executor = EmetToolExecutor()
+
+        mock_gdelt = AsyncMock()
+        mock_gdelt.search_news_ftm.side_effect = Exception("GDELT timeout")
+        executor._pool["gdelt"] = mock_gdelt
+
+        result = await executor.execute_raw(
+            "monitor_entity",
+            {"entity_name": "Acme Corp"},
+        )
+
+        assert result["article_count"] == 0
+        assert result["monitoring_registered"] is True
+        assert result["entities"] == []
+
+    @pytest.mark.asyncio
+    async def test_monitor_entity_passes_timespan(self):
+        """Timespan param should be forwarded to GDELT."""
+        from emet.mcp.tools import EmetToolExecutor
+
+        executor = EmetToolExecutor()
+
+        mock_gdelt = AsyncMock()
+        mock_gdelt.search_news_ftm.return_value = {
+            "article_count": 0, "entity_count": 0,
+            "unique_sources": [], "average_tone": 0.0,
+            "entities": [],
+        }
+        executor._pool["gdelt"] = mock_gdelt
+
+        await executor.execute_raw(
+            "monitor_entity",
+            {"entity_name": "Acme Corp", "timespan": "24h"},
+        )
+
+        mock_gdelt.search_news_ftm.assert_called_once_with(
+            query="Acme Corp",
+            timespan="24h",
+        )

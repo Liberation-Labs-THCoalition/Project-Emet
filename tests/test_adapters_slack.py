@@ -1355,3 +1355,158 @@ class TestSlackAdapterIntegration:
         assert channel_type == "channel"
         assert has_files is True
         assert has_attachments is True
+
+
+# ---------------------------------------------------------------------------
+# Slack OAuth installation store (Redis + Postgres)
+# ---------------------------------------------------------------------------
+
+from emet.adapters.slack.installation_store import (
+    DualInstallationStore,
+    RedisInstallationCache,
+    PostgresInstallationStore,
+)
+
+
+class TestRedisInstallationCache:
+    """Test Redis cache layer in isolation."""
+
+    @pytest.mark.asyncio
+    async def test_set_and_get_with_mock_redis(self):
+        cache = RedisInstallationCache()
+        # Inject a mock redis
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.set = AsyncMock()
+        cache._redis = mock_redis
+
+        inst = _make_installation("T111")
+        await cache.set("team:T111", inst)
+        mock_redis.set.assert_called_once()
+
+        # Verify key prefix
+        call_args = mock_redis.set.call_args
+        assert call_args[0][0] == "emet:slack:install:team:T111"
+
+    @pytest.mark.asyncio
+    async def test_get_returns_none_when_redis_unavailable(self):
+        cache = RedisInstallationCache("redis://nonexistent:9999")
+        result = await cache.get("team:T999")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_roundtrip_via_mock(self):
+        import json as _json
+        cache = RedisInstallationCache()
+        inst = _make_installation("T222")
+        stored_data = _json.dumps(inst.to_dict())
+
+        mock_redis = AsyncMock()
+        mock_redis.set = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=stored_data)
+        cache._redis = mock_redis
+
+        await cache.set("team:T222", inst)
+        got = await cache.get("team:T222")
+        assert got is not None
+        assert got.team_id == "T222"
+        assert got.bot_token == inst.bot_token
+
+
+class TestDualInstallationStore:
+    """Test the combined Redis+Postgres store."""
+
+    @pytest.mark.asyncio
+    async def test_save_writes_to_both_layers(self):
+        store = DualInstallationStore()
+        store._cache = AsyncMock()
+        store._db = AsyncMock()
+
+        inst = _make_installation("T333")
+        await store.save(inst)
+
+        store._db.save.assert_called_once_with(inst)
+        assert store._cache.set.call_count >= 1  # at least team key
+
+    @pytest.mark.asyncio
+    async def test_find_by_team_cache_hit(self):
+        store = DualInstallationStore()
+        inst = _make_installation("T444")
+        store._cache = AsyncMock()
+        store._cache.get = AsyncMock(return_value=inst)
+        store._db = AsyncMock()
+
+        result = await store.find_by_team("T444")
+        assert result is not None
+        assert result.team_id == "T444"
+        # Should NOT have queried Postgres
+        store._db.find_by_team.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_find_by_team_cache_miss_backfills(self):
+        store = DualInstallationStore()
+        inst = _make_installation("T555")
+        store._cache = AsyncMock()
+        store._cache.get = AsyncMock(return_value=None)  # cache miss
+        store._db = AsyncMock()
+        store._db.find_by_team = AsyncMock(return_value=inst)
+
+        result = await store.find_by_team("T555")
+        assert result is not None
+        assert result.team_id == "T555"
+        # Should have backfilled cache
+        store._cache.set.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_from_both(self):
+        store = DualInstallationStore()
+        store._cache = AsyncMock()
+        store._db = AsyncMock()
+        store._db.delete = AsyncMock(return_value=True)
+
+        result = await store.delete("T666")
+        assert result is True
+        store._cache.delete.assert_called_once()
+        store._db.delete.assert_called_once_with("T666")
+
+    @pytest.mark.asyncio
+    async def test_works_without_postgres(self):
+        """Should function with Redis-only if no database_url."""
+        store = DualInstallationStore(redis_url="redis://localhost:6379/0", database_url="")
+        assert store._db is None
+        # find_by_team should return None, not crash
+        store._cache = AsyncMock()
+        store._cache.get = AsyncMock(return_value=None)
+        result = await store.find_by_team("T777")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_enterprise_id_cached_separately(self):
+        store = DualInstallationStore()
+        store._cache = AsyncMock()
+        store._db = AsyncMock()
+
+        inst = _make_installation("T888", enterprise_id="E999")
+        await store.save(inst)
+
+        # Should have cached under both team and enterprise keys
+        cache_calls = [c[0][0] for c in store._cache.set.call_args_list]
+        assert any("team:T888" in k for k in cache_calls)
+        assert any("ent:E999" in k for k in cache_calls)
+
+
+def _make_installation(
+    team_id: str = "T12345",
+    enterprise_id: str | None = None,
+) -> SlackInstallation:
+    """Helper to create a test installation."""
+    return SlackInstallation(
+        team_id=team_id,
+        team_name=f"Team {team_id}",
+        bot_token=f"xoxb-test-{team_id}",
+        bot_user_id="U99999",
+        installed_at=datetime.now(timezone.utc),
+        installer_user_id="U11111",
+        org_id="org_test",
+        enterprise_id=enterprise_id,
+    )

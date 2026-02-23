@@ -322,6 +322,110 @@ class EmetMCPServer:
         server = uvicorn.Server(config)
         await server.serve()
 
+    async def run_sse(self, host: str = "0.0.0.0", port: int = 9400) -> None:
+        """Run MCP server over HTTP/SSE (Model Context Protocol standard).
+
+        SSE transport implements the MCP specification:
+          - GET  /sse       → SSE stream for server→client messages
+          - POST /messages  → Client→server JSON-RPC messages
+
+        Each client gets a unique session via query param on /messages.
+        """
+        try:
+            import asyncio as _asyncio
+            import uuid as _uuid
+            from fastapi import FastAPI, Request
+            from fastapi.responses import JSONResponse
+            from starlette.responses import StreamingResponse
+            import uvicorn
+        except ImportError:
+            logger.error("FastAPI/uvicorn required for SSE transport")
+            return
+
+        app = FastAPI(title="Emet MCP Server (SSE)", version=SERVER_INFO["version"])
+
+        # Per-session message queues: session_id → asyncio.Queue
+        _sessions: dict[str, _asyncio.Queue] = {}
+
+        @app.get("/sse")
+        async def sse_endpoint(request: Request) -> StreamingResponse:
+            """SSE stream endpoint.  Sends an 'endpoint' event on connect
+            telling the client where to POST messages."""
+            session_id = str(_uuid.uuid4())
+            queue: _asyncio.Queue = _asyncio.Queue()
+            _sessions[session_id] = queue
+
+            messages_url = f"http://{host}:{port}/messages?session_id={session_id}"
+
+            async def event_stream():
+                # First event: tell client the messages endpoint
+                yield f"event: endpoint\ndata: {messages_url}\n\n"
+
+                try:
+                    while True:
+                        # Check if client disconnected
+                        if await request.is_disconnected():
+                            break
+                        try:
+                            msg = await _asyncio.wait_for(queue.get(), timeout=30.0)
+                            import json as _json
+                            yield f"event: message\ndata: {_json.dumps(msg)}\n\n"
+                        except _asyncio.TimeoutError:
+                            # Send keepalive comment
+                            yield ": keepalive\n\n"
+                finally:
+                    _sessions.pop(session_id, None)
+
+            return StreamingResponse(
+                event_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        @app.post("/messages")
+        async def messages_endpoint(request: Request) -> JSONResponse:
+            """Receive JSON-RPC messages from client, route responses to SSE."""
+            session_id = request.query_params.get("session_id", "")
+            queue = _sessions.get(session_id)
+            if queue is None:
+                return JSONResponse(
+                    {"error": "Unknown session. Connect to /sse first."},
+                    status_code=400,
+                )
+
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse(
+                    _jsonrpc_error(None, PARSE_ERROR, "Invalid JSON"),
+                    status_code=200,
+                )
+
+            response = await self.handle_message(body)
+            if response is not None:
+                await queue.put(response)
+
+            return JSONResponse({"ok": True}, status_code=202)
+
+        @app.get("/health")
+        async def health() -> dict:
+            return {
+                "status": "ok",
+                "transport": "sse",
+                "server": SERVER_INFO,
+                "active_sessions": len(_sessions),
+                "tool_count": len(EMET_TOOLS),
+            }
+
+        logger.info("Emet MCP server (SSE) starting on http://%s:%d", host, port)
+        config = uvicorn.Config(app, host=host, port=port, log_level="info")
+        server = uvicorn.Server(config)
+        await server.serve()
+
 
 # ---------------------------------------------------------------------------
 # CLI entry point
@@ -335,7 +439,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Emet MCP Server")
     parser.add_argument(
         "--transport",
-        choices=["stdio", "http"],
+        choices=["stdio", "http", "sse"],
         default="stdio",
         help="Transport mode (default: stdio)",
     )
@@ -352,6 +456,8 @@ async def main() -> None:
     server = EmetMCPServer()
     if args.transport == "http":
         await server.run_http(host=args.host, port=args.port)
+    elif args.transport == "sse":
+        await server.run_sse(host=args.host, port=args.port)
     else:
         await server.run_stdio()
 

@@ -567,17 +567,43 @@ async def webchat_websocket(
                         "status": "received",
                     })
 
-                    # In a full implementation, this would trigger agent processing
-                    # For now, send a placeholder response
+                    # Agent processing via InvestigationBridge
                     await websocket.send_json({
                         "type": WebChatMessageType.AGENT_TYPING.value,
                     })
 
-                    # Placeholder agent response
                     agent_msg_id = str(uuid.uuid4())
-                    response_content = (
-                        "Message received. Agent processing not yet implemented."
-                    )
+
+                    try:
+                        from emet.adapters.investigation_bridge import (
+                            InvestigationBridge,
+                        )
+
+                        bridge = InvestigationBridge()
+
+                        async def _send_progress(text: str) -> None:
+                            """Stream progress updates over WebSocket."""
+                            await websocket.send_json({
+                                "type": WebChatMessageType.AGENT_TYPING.value,
+                                "content": text,
+                            })
+
+                        result = await bridge.handle_investigate_command(
+                            goal=content,
+                            channel_id=session_id,
+                            send_fn=_send_progress,
+                        )
+
+                        if result.error:
+                            response_content = f"Investigation failed: {result.error}"
+                        else:
+                            response_content = result.scrubbed_report_text
+
+                    except Exception as exc:
+                        logger.exception("Webchat agent processing failed")
+                        response_content = (
+                            f"Investigation error: {exc}"
+                        )
 
                     _message_history[session_id].append({
                         "id": agent_msg_id,

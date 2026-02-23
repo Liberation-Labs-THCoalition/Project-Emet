@@ -104,11 +104,51 @@ async def websocket_endpoint(websocket: WebSocket, org_id: str) -> None:
                 await manager.send_personal(websocket, {"type": "pong"})
 
             elif msg_type == "message":
-                # Placeholder for agent interaction pipeline
-                await manager.send_personal(websocket, {
-                    "type": MessageType.AGENT_RESPONSE,
-                    "detail": "message received (handler not yet implemented)",
-                })
+                # Route to investigation bridge
+                content = data.get("content", "")
+                if not content:
+                    await manager.send_personal(websocket, {
+                        "type": MessageType.ERROR,
+                        "detail": "missing 'content' field in message",
+                    })
+                    continue
+
+                try:
+                    from emet.adapters.investigation_bridge import (
+                        InvestigationBridge,
+                    )
+
+                    bridge = InvestigationBridge()
+
+                    async def _ws_send(text: str) -> None:
+                        await manager.send_personal(websocket, {
+                            "type": MessageType.AGENT_RESPONSE,
+                            "detail": text,
+                            "streaming": True,
+                        })
+
+                    result = await bridge.handle_investigate_command(
+                        goal=content,
+                        channel_id=f"ws-{org_id}",
+                        send_fn=_ws_send,
+                    )
+
+                    final_text = (
+                        result.scrubbed_report_text
+                        if not result.error
+                        else f"Investigation failed: {result.error}"
+                    )
+                    await manager.send_personal(websocket, {
+                        "type": MessageType.AGENT_RESPONSE,
+                        "detail": final_text,
+                        "streaming": False,
+                    })
+                except Exception as exc:
+                    logger.exception("WebSocket agent processing failed")
+                    await manager.send_personal(websocket, {
+                        "type": MessageType.ERROR,
+                        "detail": f"Agent error: {exc}",
+                    })
 
             else:
                 await manager.send_personal(websocket, {
