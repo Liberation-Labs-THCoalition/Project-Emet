@@ -1,711 +1,628 @@
 # Emet — User Guide
 
-A practical guide to setting up and using the Emet investigative journalism framework.
+A practical guide to setting up and running investigations with Emet.
 
 ---
 
 ## Table of Contents
 
-1. [What is Emet?](#1-what-is-emet)
-2. [System Requirements](#2-system-requirements)
-3. [Installation](#3-installation)
-4. [Configuration](#4-configuration)
-5. [Connecting to Aleph](#5-connecting-to-aleph)
-6. [Your First Investigation](#6-your-first-investigation)
-7. [Working with Skill Chips](#7-working-with-skill-chips)
-8. [Investigation Workflows](#8-investigation-workflows)
-9. [External Data Sources](#9-external-data-sources)
-10. [Ethics and Governance](#10-ethics-and-governance)
-11. [API Reference](#11-api-reference)
-12. [Docker Deployment](#12-docker-deployment)
-13. [Troubleshooting](#13-troubleshooting)
+1. [What Is Emet?](#1-what-is-emet)
+2. [Installation](#2-installation)
+3. [Configuration](#3-configuration)
+4. [Your First Investigation](#4-your-first-investigation)
+5. [CLI Reference](#5-cli-reference)
+6. [HTTP API](#6-http-api)
+7. [WebSocket Streaming](#7-websocket-streaming)
+8. [MCP Server](#8-mcp-server)
+9. [Slack & Discord](#9-slack--discord)
+10. [LLM Providers](#10-llm-providers)
+11. [Investigation Tools](#11-investigation-tools)
+12. [Safety & Publication Boundaries](#12-safety--publication-boundaries)
+13. [Sessions: Save, Resume, Export](#13-sessions-save-resume-export)
+14. [Workflows](#14-workflows)
+15. [Graph Analytics](#15-graph-analytics)
+16. [Change Monitoring](#16-change-monitoring)
+17. [Direct Python API](#17-direct-python-api)
+18. [External Data Sources](#18-external-data-sources)
+19. [Docker Deployment](#19-docker-deployment)
+20. [Troubleshooting](#20-troubleshooting)
 
 ---
 
-## 1. What is Emet?
+## 1. What Is Emet?
 
-Emet is a multi-agent AI system that helps investigative journalists search, cross-reference, analyze, and verify data across the [FollowTheMoney](https://followthemoney.tech/) ecosystem. It orchestrates 15 specialized agents ("skill chips") that each handle a different aspect of the investigative workflow — from entity search to network analysis to pre-publication verification.
+Emet is an AI-powered investigative intelligence platform. You give it a goal in plain language — "Trace the beneficial ownership of Meridian Holdings through offshore jurisdictions" — and it runs a multi-step investigation autonomously.
 
-The system is built on the [Kintsugi](https://github.com/Liberation-Labs-THCoalition/Project-Kintsugi) self-repairing harness architecture, which provides safety-critical infrastructure: shadow verification of agent outputs, ethics governance, memory management, and security monitoring.
+An LLM reasons about what to do next based on what it has already found. The system searches entity databases, screens sanctions and PEP lists, traces corporate ownership chains, investigates blockchain transactions, monitors global news, and synthesizes findings into a structured, evidence-backed report.
 
-**What it is:** An intelligent assistant that helps you work faster and more thoroughly across investigative datasets, while maintaining strict editorial controls.
+**What it is:** An autonomous investigative agent with a safety harness, audit trail, and publication boundary.
 
-**What it is not:** An autonomous investigator. Every finding requires human verification. Every publication decision requires human approval. The system never fabricates evidence, impersonates sources, or acts without oversight.
+**What it is not:** An unsupervised publisher. Every investigation has a human in the loop. Every report passes through PII scrubbing before leaving the system. The system never fabricates evidence.
 
 ---
 
-## 2. System Requirements
+## 2. Installation
 
-### Minimum
+### Prerequisites
 
 - Python 3.11 or later
-- 4 GB RAM
-- PostgreSQL 15+ (or the Docker Compose stack handles this)
-- Redis 7+ (or Docker Compose)
+- 4 GB RAM minimum (8 GB recommended)
+- No external services required for development — everything runs on stubs
 
-### Recommended
-
-- Python 3.12
-- 8+ GB RAM (for NLP models)
-- Docker & Docker Compose v2
-- An Aleph instance (OpenAleph self-hosted, or Aleph Pro SaaS access)
-
-### Optional Services
-
-| Service | What For | Free Tier? |
-|---------|----------|------------|
-| [OpenSanctions / yente](https://opensanctions.org) | Sanctions & PEP screening | Yes (rate limited) |
-| [OpenCorporates](https://opencorporates.com) | Company registry lookups | Yes (200 req/month; journalist access available) |
-| [ICIJ Offshore Leaks](https://offshoreleaks.icij.org) | Offshore entity search | Yes |
-| [GLEIF](https://gleif.org) | LEI corporate identity | Yes (no key needed) |
-| Anthropic or OpenAI API | LLM-powered classification & extraction | No |
-
----
-
-## 3. Installation
-
-### Option A: Local Development Install
+### Install
 
 ```bash
-# Clone the repository
 git clone https://github.com/Liberation-Labs-THCoalition/Project-Emet.git
 cd Project-Emet
-
-# Create a virtual environment (recommended)
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
-
-# Install with development dependencies
 pip install -e ".[dev]"
-
-# Copy the example environment file
 cp .env.example .env
 ```
 
-### Option B: Docker (Full Stack)
-
-This starts the harness along with PostgreSQL and Redis — everything you need except Aleph itself.
+### Verify
 
 ```bash
-git clone https://github.com/Liberation-Labs-THCoalition/Project-Emet.git
-cd Project-Emet
-cp .env.example .env
-# Edit .env (see Configuration below)
-
-docker-compose up -d
+emet status
 ```
 
-### Option C: Docker with Local Aleph
-
-If you're running OpenAleph locally too, they can share the same Docker network:
-
-```bash
-# In your Aleph directory
-docker-compose up -d
-
-# In your Project-Emet directory
-# Set ALEPH_HOST=http://aleph_api:8080 in .env (use the Aleph container name)
-docker-compose up -d
-```
-
-### Installing NLP Models (Optional)
-
-For enhanced entity extraction beyond Aleph's built-in NLP:
-
-```bash
-# English transformer model (best accuracy, ~500MB)
-python -m spacy download en_core_web_trf
-
-# Or the smaller statistical model (~50MB, less accurate)
-python -m spacy download en_core_web_sm
-
-# For multilingual investigations
-python -m spacy download xx_ent_wiki_sm
-```
+You should see all modules reporting `✓`.
 
 ---
 
-## 4. Configuration
+## 3. Configuration
 
-Edit your `.env` file with the credentials for the services you'll use. Only `ALEPH_HOST` is strictly required — everything else enables additional capabilities.
+Edit `.env` with the credentials for the services you'll use. Nothing is strictly required — Emet runs in stub mode without any API keys.
 
 ```bash
-# ─── Required ────────────────────────────────────────
-ALEPH_HOST=http://localhost:8080       # Your Aleph instance URL
-ALEPH_API_KEY=your-api-key             # Aleph API key (from your Aleph user profile)
+# ─── LLM (for autonomous investigation) ──────────
+LLM_PROVIDER=stub                  # stub | ollama | anthropic
+ANTHROPIC_API_KEY=sk-ant-...       # Anthropic Claude
+OLLAMA_HOST=http://localhost:11434 # Local Ollama
+LLM_FALLBACK_ENABLED=true          # Cascade through providers on failure
 
-# ─── Database (defaults work with Docker Compose) ────
-DATABASE_URL=postgresql+asyncpg://ftm:ftm@localhost:5432/emet
+# ─── Aleph (for live data) ───────────────────────
+ALEPH_HOST=http://localhost:8080
+ALEPH_API_KEY=your-api-key
+
+# ─── External data sources (optional) ────────────
+OPENSANCTIONS_API_KEY=your-key     # Sanctions & PEP screening
+OPENCORPORATES_TOKEN=your-token    # Corporate registry lookups
+ETHERSCAN_API_KEY=your-key         # Ethereum blockchain (free tier)
+COMPANIES_HOUSE_API_KEY=your-key   # UK Companies House (free at developer portal)
+# SEC EDGAR: no key needed         # US filings (User-Agent header only)
+# Tronscan: no key needed          # Tron blockchain / USDT-TRC20
+
+# ─── Infrastructure (defaults work with Docker) ──
+DATABASE_URL=postgresql://ftm:ftm@localhost:5432/emet
 REDIS_URL=redis://localhost:6379/0
-
-# ─── External Data Sources (optional) ────────────────
-OPENSANCTIONS_API_KEY=                 # From opensanctions.org/account
-OPENCORPORATES_API_TOKEN=              # From opencorporates.com/users/account
-
-# ─── LLM Providers (optional, for smart routing) ─────
-ANTHROPIC_API_KEY=                     # For Claude-based classification
-OPENAI_API_KEY=                        # Alternative LLM provider
 ```
 
-### Getting Your Aleph API Key
+### Getting API Keys
 
-1. Log into your Aleph instance
-2. Go to your user profile (top-right menu → Settings)
-3. Under "API Key", generate or copy your key
-4. Paste it as `ALEPH_API_KEY` in `.env`
-
-### Getting an OpenSanctions Key
-
-1. Go to [opensanctions.org](https://opensanctions.org)
-2. Create an account
-3. Your API key is in your account dashboard
-4. Journalists and NGOs can request enhanced free access
+| Service | How to Get a Key | Free Tier |
+|---------|-----------------|-----------|
+| Anthropic | [console.anthropic.com](https://console.anthropic.com) | Pay-per-token |
+| OpenSanctions | [opensanctions.org](https://opensanctions.org) | Yes (rate limited; journalist access available) |
+| OpenCorporates | [opencorporates.com](https://opencorporates.com) | Yes (200 req/month; journalist access available) |
+| GLEIF | No key needed | Unlimited |
+| Etherscan | [etherscan.io](https://etherscan.io) | Yes (5 req/sec) |
+| Aleph | Your Aleph instance → Settings → API Key | Depends on instance |
 
 ---
 
-## 5. Connecting to Aleph
+## 4. Your First Investigation
 
-### What is Aleph?
-
-Aleph is OCCRP's investigative data platform. It stores entities (people, companies, vessels, documents) in the [FollowTheMoney](https://followthemoney.tech/) data model and provides search, cross-referencing, and document processing.
-
-There are three variants:
-
-| Variant | Access | Best For |
-|---------|--------|----------|
-| **Aleph Pro** (OCCRP) | By application to OCCRP | Access to OCCRP's global datasets |
-| **OpenAleph** | Self-hosted (MIT license) | Your own private investigations |
-| **Public Aleph** | aleph.occrp.org | Browsing public datasets |
-
-### Verifying Your Connection
-
-Once configured, test the connection:
-
-```python
-import asyncio
-from emet.ftm.aleph_client import AlephClient, AlephConfig
-
-async def test():
-    client = AlephClient(AlephConfig(
-        host="http://localhost:8080",
-        api_key="your-key",
-    ))
-    collections = await client.list_collections(limit=5)
-    print(f"Connected! Found {collections.get('total', 0)} collections.")
-    for c in collections.get("results", []):
-        print(f"  - {c.get('label')} (ID: {c.get('id')})")
-
-asyncio.run(test())
-```
-
----
-
-## 6. Your First Investigation
-
-Here's a walkthrough of a basic investigation workflow using the Python API directly. This demonstrates what each skill chip does and how they chain together.
-
-### Step 1: Start an Investigation Context
-
-```python
-import asyncio
-from emet.skills import get_chip
-from emet.skills.base import SkillContext, SkillRequest
-
-# Create a shared investigation context
-ctx = SkillContext(
-    investigation_id="inv-001",
-    user_id="journalist-1",
-    hypothesis="Investigate beneficial ownership of Acme Holdings Ltd",
-    collection_ids=["42"],  # Your Aleph collection ID
-)
-```
-
-### Step 2: Search for Entities
-
-```python
-async def search():
-    chip = get_chip("entity_search")
-    
-    # Search Aleph
-    response = await chip.handle(
-        SkillRequest(intent="search", parameters={"query": "Acme Holdings"}),
-        ctx,
-    )
-    print(response.content)
-    # → "Found 12 results for 'Acme Holdings' (showing 12)"
-    
-    # The response contains FtM entities
-    for result in response.data.get("results", [])[:3]:
-        entity = result["entity"]
-        print(f"  {entity['schema']}: {result['names']}")
-
-asyncio.run(search())
-```
-
-### Step 3: Screen Against Sanctions
-
-```python
-async def screen():
-    chip = get_chip("cross_reference")
-
-    response = await chip.handle(
-        SkillRequest(
-            intent="screen_sanctions",
-            parameters={"query": "Acme Holdings Ltd"},
-        ),
-        ctx,
-    )
-    print(response.content)
-    # → "Sanctions screening: 3 potential matches, 1 high-confidence hit."
-    
-    if response.requires_consensus:
-        print("⚠️  High-confidence sanctions hit — requires human review")
-        for hit in response.data.get("high_confidence_hits", []):
-            print(f"  Match: {hit}")
-
-asyncio.run(screen())
-```
-
-### Step 4: Search External Sources
-
-```python
-async def external():
-    chip = get_chip("entity_search")
-    
-    response = await chip.handle(
-        SkillRequest(
-            intent="search_external",
-            parameters={
-                "query": "Acme Holdings",
-                "sources": ["opensanctions", "opencorporates", "icij", "gleif"],
-            },
-        ),
-        ctx,
-    )
-    print(response.content)
-    # → "External search: 27 results across 4 sources"
-    
-    for source, results in response.data.get("results_by_source", {}).items():
-        count = len(results) if isinstance(results, list) else 0
-        print(f"  {source}: {count} results")
-
-asyncio.run(external())
-```
-
-### Step 5: Trace Ownership
-
-```python
-async def ownership():
-    chip = get_chip("financial_investigation")
-    
-    response = await chip.handle(
-        SkillRequest(
-            intent="trace_ownership",
-            parameters={
-                "entity_name": "Acme Holdings Ltd",
-                "max_depth": 10,
-            },
-        ),
-        ctx,
-    )
-    print(response.content)
-    # → "Beneficial ownership trace initiated (max depth: 10)."
-    print("Data sources:", response.data.get("data_sources"))
-    print("Pipeline:", response.data.get("pipeline"))
-
-asyncio.run(ownership())
-```
-
-### Step 6: Verify Before Publishing
-
-```python
-async def verify():
-    chip = get_chip("verification")
-    
-    response = await chip.handle(
-        SkillRequest(
-            intent="verify_claim",
-            parameters={
-                "claim": "Acme Holdings Ltd is beneficially owned by John Smith, "
-                         "who is also a director of three BVI shell companies.",
-                "evidence": [
-                    "Aleph entity match (confidence 0.92)",
-                    "OpenCorporates directorship records",
-                    "ICIJ Offshore Leaks match",
-                ],
-            },
-        ),
-        ctx,
-    )
-    print(response.content)
-    # → "Claim verification initiated."
-    print("Steps:", response.data.get("verification_steps"))
-
-asyncio.run(verify())
-```
-
----
-
-## 7. Working with Skill Chips
-
-### How Skill Chips Work
-
-Each chip is a specialized agent that handles one domain of investigation work. They all follow the same interface:
-
-```python
-chip = get_chip("chip_name")              # Instantiate from registry
-response = await chip.handle(request, context)  # Execute
-```
-
-The **request** tells the chip what to do:
-- `intent` — What action to take (e.g., "search", "screen_sanctions", "build_graph")
-- `parameters` — Action-specific parameters (e.g., query terms, entity IDs, collection IDs)
-- `raw_input` — Free-form text input (used as fallback when parameters aren't set)
-
-The **response** tells you what happened:
-- `content` — Human-readable summary
-- `success` — Whether it worked
-- `data` — Structured result data
-- `produced_entities` — FtM entities created/found by this action
-- `suggestions` — Recommended next steps
-- `requires_consensus` — Whether human editorial approval is needed
-- `result_confidence` — How confident the chip is in the result (0.0–1.0)
-
-### Listing Available Chips
-
-```python
-from emet.skills import list_chips
-
-for chip in list_chips():
-    print(f"{chip['name']:30s} {chip['domain']:25s} {chip['description']}")
-```
-
-### Chip Quick Reference
-
-#### Entity Search (`entity_search`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `search` | `query`, `schema`, `collections`, `countries`, `limit` | Full-text search across Aleph |
-| `get_entity` | `entity_id` | Retrieve entity by ID |
-| `expand` | `entity_id` | Find all connected entities |
-| `similar` | `entity_id` | Find similar entities |
-| `search_external` | `query`, `sources` | Federated search across external databases |
-
-#### Cross-Reference (`cross_reference`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `trigger_xref` | `collection_id` | Start cross-referencing a collection |
-| `get_xref_results` | `collection_id`, `min_score` | Retrieve ranked match results |
-| `decide_match` | `collection_id`, `xref_id`, `decision` | Confirm/reject a match **(consensus required)** |
-| `screen_sanctions` | `entity_data` or `query` | Screen entity against OpenSanctions |
-| `batch_screen` | `collection_id` | Screen all entities in a collection |
-| `match_entity` | `entity_data`, `target_dataset` | Match entity against a dataset |
-
-#### Document Analysis (`document_analysis`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `upload` | `file_path`, `collection_id`, `language` | Upload a file to Aleph |
-| `crawldir` | `directory`, `collection_id` | Recursively upload a directory |
-| `reingest` | `collection_id` | Re-process all documents |
-| `reindex` | `collection_id` | Rebuild search index |
-| `classify` | `entity_id` | Classify document type |
-| `extract_tables` | `entity_id` | Extract structured tables |
-| `list_documents` | `collection_id` | List documents with metadata |
-
-#### NLP Extraction (`nlp_extraction`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `extract` | `text`, `model` | Run NER on text |
-| `extract_relationships` | `text` | Extract entity-entity relationships |
-| `detect_language` | `text` | Detect language(s) |
-| `extract_financial` | `text` | Find IBANs, amounts, SWIFT codes |
-| `batch_extract` | `collection_id` | Run NLP pipeline on collection **(consensus required)** |
-
-#### Network Analysis (`network_analysis`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `build_graph` | `collection_id` | Build network graph from entities |
-| `shortest_path` | `source_entity_id`, `target_entity_id` | Find shortest connection path |
-| `communities` | `algorithm` | Detect entity clusters (Louvain, etc.) |
-| `centrality` | `metrics` | Calculate node importance metrics |
-| `find_bridges` | — | Find entities connecting separate groups |
-| `beneficial_ownership` | `entity_id`, `max_depth` | Trace ownership chain |
-| `detect_cycles` | `type` | Find circular ownership/payment structures |
-| `export_graph` | `format` | Export to GEXF, Cypher, GraphML, or JSON |
-
-#### Financial Investigation (`financial_investigation`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `trace_ownership` | `entity_id` or `entity_name` | Trace beneficial ownership chain |
-| `detect_shell` | `entity_id`, `entity_data` | Analyze shell company indicators |
-| `money_trail` | `source_entity_id` | Follow payment chains |
-| `sanctions_exposure` | `entity_id` | Direct + indirect sanctions exposure |
-| `pep` | `query` | Screen for Politically Exposed Persons |
-| `tax_haven` | `jurisdictions` | Analyze tax haven exposure |
-| `offshore_check` | `query` | Search ICIJ Offshore Leaks |
-| `lei_lookup` | `query` or `lei` | Search GLEIF LEI index |
-
-#### Government Accountability (`government_accountability`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `campaign_finance` | `candidate`, `donor` | Analyze campaign contributions |
-| `lobbying` | `entity_name` | Track lobbying disclosures |
-| `procurement` | `contractor`, `agency` | Analyze government contracts |
-| `foia` | `action` | Manage FOIA request tracking |
-| `revolving_door` | `person_name` | Track government ↔ private sector movement |
-| `conflict_of_interest` | `official_id`, `entity_id` | Detect conflicts |
-
-#### Corporate Research (`corporate_research`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `company` | `query`, `jurisdiction` | Search OpenCorporates (200M+ companies) |
-| `get_company` | `jurisdiction`, `company_number` | Get company by registration |
-| `officers` | `query`, `jurisdiction` | Search company officers/directors |
-| `subsidiaries` | `lei` or `query` | Map corporate tree via GLEIF |
-
-#### Monitoring (`monitoring`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `create_watchlist` | `name`, `queries` | Create a monitoring watchlist |
-| `check_watchlist` | `watchlist_id` | Run all watchlist queries |
-| `monitor_entity` | `entity_id` or `entity_name` | Monitor an entity for changes |
-| `monitor_collection` | `collection_id` | Monitor collection for updates |
-| `sanctions_monitor` | — | Monitor sanctions list changes |
-| `set_alert` | `condition`, `channel` | Configure alert rules |
-
-#### Verification (`verification`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `fact_check` | `claim`, `evidence` | Verify claim against evidence |
-| `source_reliability` | `source`, `type` | Assess source reliability |
-| `corroborate` | `findings` | Check corroboration across sources |
-| `legal_review` | `content`, `named_persons` | Screen for defamation risk **(consensus required)** |
-| `pre_publication` | — | Full pre-publication checklist **(consensus required)** |
-
-#### Story Development (`story_development`)
-
-| Intent | Parameters | Description |
-|--------|-----------|-------------|
-| `timeline` | `events`, `collection_id` | Build investigation timeline |
-| `outline` | — | Generate structured story outline |
-| `key_findings` | — | Extract and rank key findings |
-| `impact_assessment` | — | Assess investigation impact |
-| `methodology_doc` | — | Generate methodology documentation |
-
----
-
-## 8. Investigation Workflows
-
-### Workflow A: Entity-Centered Investigation
-
-This is the most common pattern — you have a name and want to find out everything about them.
-
-```
-1. entity_search → search("John Smith")
-2. entity_search → expand(entity_id) — find connected entities
-3. cross_reference → screen_sanctions(entity_data) — check watchlists
-4. corporate_research → company("John Smith") — find company connections
-5. financial_investigation → trace_ownership(entity_id) — follow the money
-6. network_analysis → build_graph(collection_id) → centrality() — find key nodes
-7. verification → fact_check(claim, evidence) — verify findings
-8. story_development → outline() — structure the story
-```
-
-### Workflow B: Document-Led Investigation
-
-You've received a cache of documents and need to extract intelligence from them.
-
-```
-1. document_analysis → upload(file_path, collection_id) — ingest documents
-2. document_analysis → check_status(collection_id) — wait for processing
-3. nlp_extraction → batch_extract(collection_id) — run NER across all docs
-4. entity_search → search("*", collection_id) — see what was extracted
-5. cross_reference → trigger_xref(collection_id) — match against all datasets
-6. cross_reference → get_xref_results(collection_id) — review matches
-7. network_analysis → build_graph(collection_id) — visualize relationships
-```
-
-### Workflow C: Financial Investigation
-
-Follow the money through corporate structures.
-
-```
-1. entity_search → search("Acme Holdings") — find the entity
-2. financial_investigation → detect_shell(entity_data) — shell company analysis
-3. financial_investigation → trace_ownership(entity_id) — ownership chain
-4. financial_investigation → offshore_check("Acme Holdings") — ICIJ check
-5. financial_investigation → lei_lookup("Acme Holdings") — GLEIF identity
-6. financial_investigation → sanctions_exposure(entity_id) — direct + indirect
-7. financial_investigation → pep("John Smith") — PEP screening
-8. network_analysis → detect_cycles(type="ownership") — circular structures
-```
-
-### Workflow D: Government Accountability
-
-Investigate a public official or government contractor.
-
-```
-1. government_accountability → official_lookup(name) — PEP/official search
-2. government_accountability → campaign_finance(candidate=name) — donors
-3. government_accountability → lobbying(entity_name) — lobby connections
-4. government_accountability → procurement(contractor, agency) — contracts
-5. government_accountability → revolving_door(person_name) — career path
-6. government_accountability → conflict_of_interest(official_id, entity_id)
-7. monitoring → monitor_entity(entity_name) — ongoing monitoring
-```
-
-### Workflow E: Ongoing Monitoring
-
-Set up continuous surveillance on investigation targets.
-
-```
-1. monitoring → create_watchlist(name, queries) — define what to watch
-2. monitoring → monitor_entity(entity_name) — per-entity monitoring
-3. monitoring → monitor_collection(collection_id) — collection changes
-4. monitoring → sanctions_monitor() — sanctions list updates
-5. monitoring → set_alert(condition, channel="slack") — configure notifications
-6. monitoring → check_alerts() — periodic check (or run on schedule)
-```
-
----
-
-## 9. External Data Sources
-
-### OpenSanctions / yente
-
-The single most important external source for investigations. Aggregates 325+ sanctions, PEP, and watchlist datasets into a unified FtM-native format.
-
-**What you get:** Sanctioned entities, Politically Exposed Persons, crime-related entities, company registries from multiple jurisdictions.
-
-**Setup:** Get an API key at [opensanctions.org](https://opensanctions.org). Set `OPENSANCTIONS_API_KEY` in `.env`.
-
-**Self-hosted option:** Run your own yente instance for unlimited, private screening:
-```bash
-docker run -p 9090:8000 ghcr.io/opensanctions/yente:latest
-# Set OPENSANCTIONS_HOST=http://localhost:9090 in .env
-```
-
-### OpenCorporates
-
-200M+ company records from 145+ jurisdictions. Essential for corporate structure research.
-
-**What you get:** Company name, jurisdiction, registration number, status, registered address, officers/directors.
-
-**Setup:** Create an account at [opencorporates.com](https://opencorporates.com). Journalists and NGOs can apply for free enhanced access.
-
-### ICIJ Offshore Leaks
-
-810K+ offshore entities from Panama Papers, Paradise Papers, Pandora Papers, and other major leak investigations.
-
-**What you get:** Offshore entities, intermediaries, officers, and their relationships.
-
-**Setup:** No API key required. The database is publicly searchable.
-
-### GLEIF
-
-Global Legal Entity Identifier index. Provides verified corporate identity and ownership relationships via standardized 20-character LEI codes.
-
-**What you get:** Verified legal entity identity, direct and ultimate parent relationships, subsidiary relationships.
-
-**Setup:** No API key required. Fully open access (CC0 license).
-
----
-
-## 10. Ethics and Governance
-
-### The Five Pillars
-
-All agent actions are evaluated against `VALUES.json`, which encodes journalism ethics as machine-readable governance rules:
-
-| Pillar | Weight | Core Principle |
-|--------|--------|----------------|
-| Accuracy | 0.25 | Every claim traceable to original source material |
-| Source Protection | 0.25 | Source identity never exposed without explicit consent |
-| Public Interest | 0.20 | Investigation scope proportionate to public significance |
-| Proportionality | 0.15 | Least intrusive method preferred |
-| Transparency | 0.15 | Methodology documented and auditable |
-
-### Consensus Gates
-
-Certain actions require human editorial approval before proceeding. When a skill chip response has `requires_consensus=True`, the system pauses and asks for human review.
-
-Actions that always require consensus:
-- Publishing or sharing investigation findings
-- Confirming or rejecting entity matches (cross-reference decisions)
-- Writing AI-extracted entities back to Aleph collections
-- Flagging an entity as suspicious
-- Accessing data classified as human-source sensitive
-- Pre-publication legal review
-
-### The "Never Trust an LLM" Principle
-
-Inspired by the NYT AI investigation methodology:
-- AI-generated findings are always flagged with `source_chip` metadata
-- No claim is published without traceable evidence from original documents
-- The verification chip provides structured evidence chain tracing
-- Confidence levels are explicitly stated for every finding
-- The system distinguishes between "confirmed fact" and "AI inference"
-
----
-
-## 11. API Reference
-
-### Starting the API Server
+### Stub Mode (no API keys needed)
 
 ```bash
-# Development (with hot reload)
-uvicorn emet.api:app --reload --port 8000
-
-# Production
-uvicorn emet.api:app --host 0.0.0.0 --port 8000 --workers 4
+emet investigate "Trace ownership of Acme Holdings"
 ```
 
-### Endpoints
+This runs with the stub LLM and mock data sources. Tools return realistic structured data, the agent follows its heuristic decision chain, and you get a complete investigation report. Good for understanding the workflow.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/health` | Health check |
-| `POST` | `/api/agent/message` | Send a message to the orchestrator |
-| `GET` | `/api/agent/investigations` | List active investigations |
-| `GET` | `/api/memory/search` | Search investigation memory |
-| `GET` | `/api/config/skills` | List available skill chips |
-| `GET` | `/api/config/values` | View current VALUES.json |
-
-### Sending a Message
+### With an LLM
 
 ```bash
-curl -X POST http://localhost:8000/api/agent/message \
-  -H "Content-Type: application/json" \
+export ANTHROPIC_API_KEY=sk-ant-...
+emet --llm anthropic investigate "Trace beneficial ownership of Meridian Holdings through offshore jurisdictions"
+```
+
+Now the LLM reasons about each step: which tool to call, what to do with the results, when to stop.
+
+### What Happens
+
+1. **Initial search**: The agent searches for the target entity across data sources.
+2. **Sanctions screening**: Discovered entities are automatically screened against global sanctions/PEP lists.
+3. **Lead generation**: Search results produce leads — ownership chains to trace, entities to investigate further, addresses to analyze.
+4. **Autonomous loop**: Each turn, the LLM examines accumulated evidence and decides the next action. The safety harness validates every tool call.
+5. **Report synthesis**: When the investigation is complete, the LLM synthesizes all findings into a narrative report with an executive summary, key findings, entity network, open questions, and methodology notes.
+6. **Publication boundary**: PII is scrubbed from the report before it's shown to you.
+
+### Output
+
+```
+🔍 Starting investigation: Trace ownership of Acme Holdings
+   Max turns: 15 | LLM: anthropic
+
+============================================================
+INVESTIGATION COMPLETE — Trace ownership of Acme Holdings
+============================================================
+  Turns:    8
+  Entities: 12
+  Findings: 5
+  Leads:    2 open / 7 total
+  Tools:    search_entities, screen_sanctions, trace_ownership, monitor_entity
+
+FINDINGS:
+  [search_entities] Found 3 entities matching "Acme Holdings" across sources
+  [screen_sanctions] Acme Holdings Ltd director matches PEP list (score: 0.87)
+  [trace_ownership] Ownership chain: Acme Holdings → Sunrise BVI → Apex Nominee Ltd
+  ...
+
+REASONING TRACE:
+  → Initial search for "Acme Holdings"
+  → Sanctions hit on director — escalating ownership tracing
+  → Tracing multi-hop ownership through BVI structure
+  → ...
+```
+
+---
+
+## 5. CLI Reference
+
+### `emet investigate`
+
+Run a full investigation.
+
+```bash
+emet investigate "investigation goal" [options]
+
+Options:
+  --llm PROVIDER       LLM provider: stub, ollama, anthropic (default: stub)
+  --max-turns N        Maximum agent turns (default: 15)
+  --no-sanctions       Skip automatic sanctions screening
+  --no-news            Skip automatic GDELT news monitoring
+  --output FILE        Save report to file (JSON, PII-scrubbed)
+  --save PATH          Auto-save session to path (for resume)
+  --resume PATH        Resume from a saved session file
+  --dry-run            Show investigation plan without executing tools
+  --interactive        Pause before each tool call for approval
+  -v, --verbose        Verbose output with debug logging
+```
+
+### `emet search`
+
+Quick entity search (does not start an investigation).
+
+```bash
+emet search "John Smith" --type Person --source opensanctions --limit 10
+```
+
+### `emet workflow`
+
+Run a predefined investigation workflow.
+
+```bash
+emet workflow corporate_ownership --target "Acme Corp"
+emet workflow sanctions_sweep --target "Viktor Petrov"
+emet workflow corporate_ownership --target "Acme Corp" --dry-run
+```
+
+### `emet serve`
+
+Start a server.
+
+```bash
+# HTTP API (FastAPI with auto-generated docs at /docs)
+emet serve --http --port 8000
+
+# MCP server (for Claude Desktop)
+emet serve --transport stdio
+```
+
+### `emet status`
+
+Show system status — loaded modules, skill chips, workflows, LLM configuration.
+
+---
+
+## 6. HTTP API
+
+Start the server:
+
+```bash
+emet serve --http --port 8000
+```
+
+API documentation is auto-generated at `http://localhost:8000/docs`.
+
+### Create an Investigation
+
+```bash
+curl -X POST localhost:8000/api/investigations \
+  -H 'Content-Type: application/json' \
   -d '{
-    "message": "Search for Acme Holdings in all collections",
-    "investigation_id": "inv-001",
-    "user_id": "journalist-1"
+    "goal": "Trace ownership of Meridian Holdings",
+    "llm_provider": "anthropic",
+    "max_turns": 15
   }'
 ```
 
-The orchestrator classifies the message, routes it to the appropriate skill chip, and returns a structured response.
+Returns `202 Accepted` with an investigation ID. The investigation runs asynchronously.
 
-### Using the Python Client Directly
+### Check Status
 
-For scripting and notebooks, you can bypass the API and use skill chips directly:
+```bash
+curl localhost:8000/api/investigations/{id}
+```
+
+Returns current status (running/complete/failed), turn count, findings, entities, and open leads.
+
+### List Investigations
+
+```bash
+curl localhost:8000/api/investigations
+```
+
+### Export Report
+
+```bash
+# JSON export (default)
+curl -X POST localhost:8000/api/investigations/{id}/export
+
+# PDF export (branded, navy/gold)
+curl -X POST "localhost:8000/api/investigations/{id}/export?format=pdf" \
+  --output investigation.pdf
+```
+
+Reports are PII-scrubbed at the publication boundary before export. CLI also supports PDF:
+
+```bash
+emet investigate "Trace ownership of Acme" --output report.pdf
+```
+
+### Other Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Health check |
+| POST | `/api/agent/message` | Send message to agent |
+| GET | `/api/agent/temporal` | Temporal event queries |
+| GET | `/api/config/values` | Read ethics constitution |
+| PUT | `/api/config/values` | Update ethics constitution |
+| GET | `/api/memory/search` | Search investigation memory |
+| POST | `/api/memory/store` | Store to investigation memory |
+
+---
+
+## 7. WebSocket Streaming
+
+Connect to a running investigation for real-time updates:
+
+```javascript
+const ws = new WebSocket("ws://localhost:8000/ws/investigations/{id}");
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  
+  switch (msg.type) {
+    case "tool_start":
+      console.log(`Executing: ${msg.data.tool}`);
+      break;
+    case "tool_result":
+      console.log(`Result: ${msg.data.summary}`);
+      break;
+    case "finding":
+      console.log(`Finding: ${msg.data.summary}`);
+      break;
+    case "report":
+      console.log(`Report ready`);
+      break;
+    case "complete":
+      console.log(`Investigation complete`);
+      ws.close();
+      break;
+    case "error":
+      console.error(`Error: ${msg.data.message}`);
+      break;
+  }
+};
+```
+
+---
+
+## 8. MCP Server
+
+Emet exposes its tools via the [Model Context Protocol](https://modelcontextprotocol.io/), making it usable from Claude Desktop and other MCP-compatible clients.
+
+```bash
+emet serve --transport stdio
+```
+
+Add to your Claude Desktop configuration:
+
+```json
+{
+  "mcpServers": {
+    "emet": {
+      "command": "emet",
+      "args": ["serve", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+Once connected, Claude can call Emet's investigation tools directly during conversations.
+
+---
+
+## 9. Slack & Discord
+
+### Slack
+
+Emet includes a full Slack adapter with OAuth, event handling, and interaction support. The adapter uses the Investigation Bridge to connect Slack messages to the agent loop.
+
+### Discord
+
+Emet includes a Discord adapter with cogs, embeds, and permission management.
+
+Both adapters stream investigation updates back as formatted messages (Slack blocks / Discord embeds) as the investigation progresses.
+
+See `emet/adapters/slack/` and `emet/adapters/discord/` for configuration.
+
+---
+
+## 10. LLM Providers
+
+Emet supports three LLM providers, with cascading fallback:
+
+| Provider | When to Use | Requires |
+|----------|------------|----------|
+| **anthropic** | Best autonomous decisions, report synthesis | `ANTHROPIC_API_KEY` |
+| **ollama** | Local, no data leaves your machine | Ollama running locally |
+| **stub** | Testing, development, no API keys | Nothing |
+
+### Selecting a Provider
+
+```bash
+# Per-investigation via CLI
+emet --llm anthropic investigate "..."
+
+# Per-investigation via HTTP API
+curl -X POST localhost:8000/api/investigations \
+  -d '{"goal": "...", "llm_provider": "anthropic"}'
+
+# Global default via .env
+LLM_PROVIDER=anthropic
+```
+
+### Fallback Chain
+
+When `LLM_FALLBACK_ENABLED=true`, if the configured provider fails, Emet tries the next one: Ollama → Anthropic → Stub. The stub provider always returns a non-JSON response, which triggers the heuristic decision fallback — so investigations always complete.
+
+### Cost Tracking
+
+Every LLM call is tracked: tokens in, tokens out, cost. The agent's cost tracker accumulates across the investigation and is included in the session summary and safety audit.
+
+---
+
+## 11. Investigation Tools
+
+These are the tools the agent can call during an investigation:
+
+### `search_entities`
+Search for entities across all connected data sources. Returns FtM-formatted entities with provenance.
+
+### `screen_sanctions`
+Screen an entity against OFAC, EU, UN consolidated sanctions lists and PEP databases. Returns match scores with fuzzy matching.
+
+### `trace_ownership`
+Trace corporate ownership chains through multi-hop offshore structures. Follows beneficial ownership links across jurisdictions.
+
+### `osint_recon`
+Open-source intelligence reconnaissance on a target. Scans domains, email addresses, IP addresses, and social footprints.
+
+### `investigate_blockchain`
+Analyze Ethereum, Bitcoin, or Tron blockchain activity for an address. Returns transaction history, counterparties, and flow patterns. Tron support includes USDT-TRC20 transfer tracking (the dominant chain for sanctions evasion due to low fees). Auto-detects chain from address format.
+
+### `monitor_entity`
+Monitor an entity across global news via GDELT. Returns recent media mentions and sentiment.
+
+### `analyze_graph`
+Run network analysis on accumulated entities: community detection, broker identification, circular ownership detection, shell company scoring.
+
+### `generate_report`
+Generate an investigation report from accumulated findings. LLM-synthesized when available, template-based as fallback.
+
+---
+
+## 12. Safety & Publication Boundaries
+
+### Two-Mode Safety Harness
+
+During investigation, the harness operates in **audit-only** mode — it logs all activity but allows tools to see complete, unredacted data. This is essential because an analyst needs to see that "John Smith at 123 Main St" appears in both a sanctions filing and a corporate registry to make the connection.
+
+At **publication boundaries** — when data leaves the system via CLI export, API response, adapter message, or report — the harness switches to **enforcing** mode:
+
+- PII is detected and scrubbed (names, addresses, phone numbers, SSNs, financial identifiers)
+- Sensitive data is redacted
+- All publications are logged in the audit trail
+
+### What Gets Checked
+
+Every tool call passes through pre-execution safety checks:
+- Is the tool recognized?
+- Are the arguments valid?
+- Has the circuit breaker tripped (too many consecutive failures)?
+- Is the session within its cost budget?
+
+### Audit Trail
+
+Every investigation maintains a full audit trail: reasoning trace (why each decision was made), tool history (what was called with what args and what came back), safety checks (observations, blocks, PII detections), and cost tracking.
+
+### Interactive Mode
+
+For maximum human control, use interactive mode:
+
+```bash
+emet --llm anthropic investigate "..." --interactive
+```
+
+You'll approve each tool call before it executes. Options at each step: approve (y), skip (s), quit (q).
+
+---
+
+## 13. Sessions: Save, Resume, Export
+
+### Save an Investigation
+
+```bash
+emet --llm anthropic investigate "Acme Holdings" --save ./sessions/acme.json
+```
+
+The session file contains: goal, all entities, findings, leads, reasoning trace, tool history, graph state, and safety audit.
+
+### Resume
+
+```bash
+emet investigate --resume ./sessions/acme.json
+```
+
+Displays the saved investigation state (findings, entities, open leads).
+
+### Export Report
+
+```bash
+emet --llm anthropic investigate "Acme Holdings" --output report.json
+```
+
+The exported report is PII-scrubbed at the publication boundary. The raw session file (via `--save`) preserves unredacted data for continued investigation.
+
+---
+
+## 14. Workflows
+
+Predefined multi-step investigation templates:
+
+```bash
+# List available workflows
+emet workflow --help
+
+# Run a workflow
+emet workflow corporate_ownership --target "Acme Corp"
+
+# Preview without executing
+emet workflow corporate_ownership --target "Acme Corp" --dry-run
+
+# Pass extra parameters
+emet workflow sanctions_sweep --target "Viktor Petrov" --params '{"jurisdictions": ["RU", "CY"]}'
+```
+
+Workflows define a fixed sequence of tool calls with conditions and parameters. They're useful for standardized compliance checks and repeatable investigation patterns.
+
+---
+
+## 15. Graph Analytics
+
+The agent automatically builds a network graph during investigations. You can also use the graph engine directly:
+
+```python
+from emet.graph.engine import GraphEngine
+
+engine = GraphEngine()
+result = engine.build_from_entities(entities)
+
+# Who are the intermediaries?
+brokers = result.analysis.find_brokers(top_n=5)
+
+# Circular ownership?
+cycles = result.analysis.find_circular_ownership(max_length=6)
+
+# Shell company scoring
+score = result.analysis.shell_company_topology_score("entity-id")
+
+# Export for visualization
+result.exporter.to_gexf("network.gexf")     # Gephi
+result.exporter.to_d3_json()                  # D3.js
+result.exporter.to_cytoscape_json()           # Cytoscape
+result.exporter.to_csv_files("./output/")     # Spreadsheets
+```
+
+---
+
+## 16. Change Monitoring
+
+Monitor registered queries for changes over time:
+
+```python
+from emet.monitoring import ChangeDetector
+
+detector = ChangeDetector(storage_dir=".emet_monitoring")
+
+# Register queries to watch
+detector.register_query("Viktor Petrov", entity_type="Person")
+detector.register_query("Sunrise Holdings", entity_type="Company")
+
+# Check for changes (compares to previous snapshot)
+alerts = await detector.check_all()
+
+for alert in alerts:
+    print(alert.summary)
+    # "⚠️ NEW SANCTION: Viktor Petrov listed in opensanctions"
+    # "New entity: Sunrise Holdings Ltd (Company) found in opencorporates"
+```
+
+Alert types: `new_sanction` (high), `new_entity` (medium), `changed_property` (low), `removed_entity` (low).
+
+---
+
+## 17. Direct Python API
+
+For programmatic access beyond the CLI and HTTP API:
+
+### Run an Investigation
+
+```python
+import asyncio
+from emet.agent import InvestigationAgent, AgentConfig
+
+config = AgentConfig(
+    max_turns=15,
+    llm_provider="anthropic",
+    auto_sanctions_screen=True,
+)
+
+agent = InvestigationAgent(config=config)
+session = asyncio.run(agent.investigate("Trace ownership of Acme Holdings"))
+
+# Access results
+print(session.summary())
+for finding in session.findings:
+    print(f"[{finding.source}] {finding.summary} (confidence: {finding.confidence})")
+```
+
+### Execute Individual Tools
+
+```python
+from emet.mcp.tools import EmetToolExecutor
+
+executor = EmetToolExecutor()
+result = await executor.execute("search_entities", {
+    "query": "Acme Holdings",
+    "entity_type": "Company",
+    "limit": 20,
+})
+```
+
+### Skill Chips (Legacy API)
+
+The original skill chip API is still available for direct access to specialized domains:
 
 ```python
 from emet.skills import get_chip
 from emet.skills.base import SkillContext, SkillRequest
 
+ctx = SkillContext(investigation_id="inv-001", user_id="analyst-1")
 chip = get_chip("entity_search")
-ctx = SkillContext(investigation_id="inv-001", user_id="me")
 response = await chip.handle(
     SkillRequest(intent="search", parameters={"query": "Acme Holdings"}),
     ctx,
@@ -714,391 +631,85 @@ response = await chip.handle(
 
 ---
 
-## 12. Docker Deployment
+## 18. External Data Sources
 
-### Full Stack
+| Source | Data | Free Tier | Key Required |
+|--------|------|-----------|-------------|
+| **OpenSanctions / yente** | 325+ sanctions & PEP lists | Yes (rate limited) | Yes |
+| **OpenCorporates** | 200M+ companies, 145+ jurisdictions | 200 req/month | Yes |
+| **ICIJ Offshore Leaks** | 810K+ offshore entities | Unlimited | No |
+| **GLEIF** | Global Legal Entity Identifiers | Unlimited | No |
+| **UK Companies House** | 600M+ UK company records, officers, PSC | Unlimited | Yes (free) |
+| **SEC EDGAR** | US securities filings, beneficial ownership | Unlimited | No |
+| **Etherscan** | Ethereum blockchain | 5 req/sec | Yes |
+| **Blockstream** | Bitcoin blockchain | Unlimited | No |
+| **Tronscan** | Tron blockchain (USDT-TRC20 tracking) | Unlimited | No |
+| **GDELT** | Global news monitoring | Unlimited | No |
+| **Aleph** | OCCRP investigative data platform | Depends on instance | Yes |
+| **Datashare** | ICIJ document processing | Self-hosted | No |
+| **DocumentCloud** | MuckRock/IRE public documents | Yes | No |
+
+All sources are optional. When a source is unavailable, the agent skips it gracefully and works with what's available.
+
+---
+
+## 19. Docker Deployment
 
 ```bash
+# Full stack (Emet + PostgreSQL + Redis)
 docker-compose up -d
-```
 
-This starts:
-- **emet** — The API server (port 8000)
-- **PostgreSQL** (pgvector) — Database for investigation state, memory, entities
-- **Redis** — Task queue for async operations
+# With local Aleph
+# Set ALEPH_HOST to the Aleph container name in .env
+docker-compose up -d
 
-### Environment Variables for Docker
-
-Set these in `.env` before running:
-
-```bash
-ALEPH_HOST=http://your-aleph-host:8080
-ALEPH_API_KEY=your-key
-ANTHROPIC_API_KEY=your-key    # Optional
-DATABASE_URL=postgresql+asyncpg://ftm:ftm@db:5432/emet
-REDIS_URL=redis://redis:6379/0
-```
-
-### Running Database Migrations
-
-```bash
-# Inside the container
-docker-compose exec engine alembic upgrade head
-
-# Or locally
-alembic upgrade head
+# HTTP API mode
+docker-compose exec emet emet serve --http --port 8000
 ```
 
 ---
 
-## 13. Troubleshooting
+## 20. Troubleshooting
 
-### "Connection refused" to Aleph
+### "No LLM client available"
+The configured LLM provider can't be reached. Check your API key, or run with `--llm stub` for testing.
 
-- Verify `ALEPH_HOST` is correct and the Aleph instance is running
-- If using Docker, make sure both containers are on the same network
-- Try `curl $ALEPH_HOST/api/2/collections` from the command line
+### Investigation ends after 1 turn
+In stub mode, the LLM returns a non-JSON response, so the heuristic fallback runs. If there are no leads to follow after the initial search, the agent concludes immediately. Use `--llm anthropic` for real autonomous decision-making.
 
-### "401 Unauthorized" from Aleph
+### "Circuit breaker tripped"
+Too many consecutive tool failures. This is the safety harness protecting against runaway loops. Check your data source connectivity.
 
-- Check that `ALEPH_API_KEY` is set correctly
-- Verify the key hasn't expired
-- Test with: `curl -H "Authorization: ApiKey YOUR_KEY" $ALEPH_HOST/api/2/collections`
+### PII appears in output
+If PII appears in a CLI report or API response, file a bug. The publication boundary should catch all PII at exit points. Note that `--save` session files deliberately preserve unredacted data for investigation continuity — that's by design.
 
-### Skill chip import errors
-
-- Make sure `followthemoney` is installed: `pip install followthemoney>=4.4`
-- For NLP features: `pip install spacy && python -m spacy download en_core_web_sm`
-
-### "No collection ID" errors
-
-- Most chips need a collection context. Pass `collection_ids=["your-id"]` in the `SkillContext`
-- Find your collection IDs: search Aleph's UI or use `AlephClient().list_collections()`
-
-### Consensus gates blocking operations
-
-- This is intentional — certain actions require human approval
-- Check `response.requires_consensus` and `response.consensus_action` to see what's needed
-- Editorial review is a feature, not a bug
-
-### Rate limiting from external APIs
-
-- OpenSanctions: 100 requests/minute (free tier)
-- OpenCorporates: 200 requests/month (free tier) — apply for journalist access
-- GLEIF: No rate limit
-- ICIJ: Be polite — add delays between requests
-
-### Database migration errors
-
+### Tests failing
 ```bash
-# Reset and recreate
-alembic downgrade base
-alembic upgrade head
+python -m pytest tests/ -q
 ```
+All 2,328 tests should pass with no external services. If failures occur, check that you've installed dev dependencies: `pip install -e ".[dev]"`
 
 ---
 
-## 14. LLM Provider Configuration
-
-Emet uses a provider-agnostic LLM layer with cascading fallback:
-
-### Provider Chain
-
-1. **Ollama** (default) — runs locally, no API key needed, free
-2. **Anthropic Claude** — cloud fallback when Ollama unavailable
-3. **Stub** — canned responses for testing (automatic when both above fail)
-
-### Setting Up Ollama
+## Quick Reference
 
 ```bash
-# Install Ollama (https://ollama.ai)
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Pull recommended models
-ollama pull llama3.2:3b     # fast tier (intent classification)
-ollama pull mistral:7b      # balanced tier (analysis)
-ollama pull llama3.1:70b    # powerful tier (synthesis) — requires 48GB+ RAM
-
-# Verify
-ollama list
-```
-
-### Configuration
-
-```bash
-# .env
-LLM_PROVIDER=ollama
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODELS=llama3.2:3b,mistral:7b,llama3.1:70b
-LLM_FALLBACK_ENABLED=true    # Cascade to Anthropic on failure
-ANTHROPIC_API_KEY=sk-...      # Only needed for fallback
-```
-
-### Using in Code
-
-```python
-from emet.cognition.llm_factory import get_llm_client
-
-client = get_llm_client()  # Returns configured client with fallback
-response = await client.complete("Analyze this entity...", tier="balanced")
-print(response.text, response.model, response.cost_usd)
-```
-
-## 15. Graph Analytics
-
-The graph analytics engine converts FtM entities into a NetworkX graph and runs investigative algorithms.
-
-### Building a Graph
-
-```python
-from emet.graph.engine import GraphEngine
-
-engine = GraphEngine()
-
-# From a list of FtM entity dicts
-result = engine.build_from_entities(entities)
-
-# From an Aleph collection
-result = await engine.build_from_aleph(collection_id="abc123")
-
-# From federated search
-result = await engine.build_from_federation("Viktor Petrov", entity_type="Person")
-```
-
-### Running Algorithms
-
-```python
-analysis = result.analysis
-
-# Who are the intermediaries?
-brokers = analysis.find_brokers(top_n=5)
-for b in brokers:
-    print(f"{b.name}: betweenness={b.betweenness:.3f}")
-
-# Circular ownership detection
-cycles = analysis.find_circular_ownership(max_length=6)
-for c in cycles:
-    print(f"Cycle: {' → '.join(e['name'] for e in c.cycle_entities)}")
-    print(f"  Risk: {c.risk_score:.2f} — {c.explanation}")
-
-# Shell company scoring
-score = analysis.shell_company_topology_score("entity-id")
-print(f"Shell score: {score.score:.2f} ({score.risk_level})")
-print(f"  Factors: {score.factor_breakdown}")
-
-# Key players (PageRank + degree)
-players = analysis.find_key_players(top_n=10)
-
-# Hidden paths between entities
-paths = analysis.find_hidden_connections("entity-a", "entity-b")
-
-# Community detection
-communities = analysis.find_communities()
-
-# Structural anomalies
-anomalies = analysis.find_structural_anomalies()
-```
-
-### Exporting for Visualization
-
-```python
-exporter = result.exporter
-
-# For Gephi
-exporter.to_gexf("network.gexf")
-
-# For spreadsheet analysis
-exporter.to_csv_files("./output/")
-
-# For web visualization
-d3_json = exporter.to_d3_json()       # D3.js force-directed
-cyto_json = exporter.to_cytoscape_json()  # Cytoscape.js
-```
-
-## 16. Export & Reporting
-
-### Investigation Reports
-
-```python
-from emet.export.markdown import MarkdownReport
-
-reporter = MarkdownReport()
-
-# From GraphEngine findings
-md = reporter.generate_from_engine_result(
-    title="Investigation: Volkov Network",
-    findings=engine_result_findings_dict,
-    summary="Multi-jurisdiction corporate network analysis.",
-)
-
-# Save
-Path("report.md").write_text(md)
-# Convert to PDF: pandoc report.md -o report.pdf
-```
-
-### FtM Bundle Export (Aleph Re-import)
-
-```python
-from emet.export.ftm_bundle import FtMBundleExporter
-
-exporter = FtMBundleExporter(include_provenance=True)
-
-# JSONL for Aleph ingest
-exporter.export_jsonl(entities, "investigation.ftm.json")
-
-# Zip bundle with manifest
-exporter.export_zip(entities, "investigation.zip", investigation_name="Volkov")
-```
-
-### Timeline Analysis
-
-```python
-from emet.export.timeline import TimelineAnalyzer
-
-analyzer = TimelineAnalyzer(burst_window_days=7, burst_threshold=3)
-events = analyzer.extract_events(entities)
-patterns = analyzer.detect_patterns(entities)
-
-for p in patterns:
-    if p.severity in ("medium", "high"):
-        print(f"⚠️ {p.pattern_type}: {p.explanation} (score={p.score:.2f})")
-```
-
-## 17. Change Detection & Monitoring
-
-Monitor registered queries for sanctions listings, new entities, and property changes.
-
-```python
-from emet.monitoring import ChangeDetector
-
-detector = ChangeDetector(storage_dir=".emet_monitoring")
-
-# Register queries to monitor
-detector.register_query("Viktor Petrov", entity_type="Person")
-detector.register_query("Sunrise Holdings", entity_type="Company", jurisdictions=["VG", "CY"])
-
-# Run checks (calls federated search, compares to previous snapshot)
-alerts = await detector.check_all()
-
-for alert in alerts:
-    print(alert.summary)
-    # "⚠️ NEW SANCTION: Viktor Petrov listed in opensanctions"
-    # "New entity: Sunrise Holdings Ltd (Company) found in opencorporates"
-    # "Changed: Sunrise Holdings — country updated"
-```
-
-### Alert Types
-
-| Type | Severity | Description |
-|------|----------|-------------|
-| `new_sanction` | high | Entity appeared in sanctions/PEP lists |
-| `new_entity` | medium | New entity matching a monitored query |
-| `changed_property` | low | Property value changed on existing entity |
-| `removed_entity` | low | Entity no longer appears in source |
-
-## 18. Blockchain Investigation
-
-```python
-from emet.ftm.external.blockchain import EtherscanClient, BlockstreamClient
-
-# Ethereum
-eth = EtherscanClient(api_key="your-key")
-balance = await eth.get_balance("0x...")
-txs = await eth.get_transactions("0x...", max_results=50)
-counterparties = await eth.get_counterparties("0x...")
-ftm_entities = await eth.address_to_ftm("0x...")  # Convert to FtM
-
-# Bitcoin
-btc = BlockstreamClient()
-balance = await btc.get_balance("bc1q...")
-txs = await btc.get_transactions("bc1q...")
-```
-
-## 19. Document Source Integration
-
-Emet ingests processed results from established document tools — it does not perform OCR itself.
-
-### Datashare (ICIJ)
-
-```python
-from emet.ftm.external.document_sources import DatashareClient
-
-ds = DatashareClient(host="http://localhost:8080", project="local-datashare")
-
-# Search documents
-docs = await ds.search("offshore accounts", size=20)
-
-# Get NER entities extracted by Datashare
-ner_results = await ds.get_named_entities(doc_id="...")
-
-# Full pipeline: search → convert to FtM (docs + NER entities + mention links)
-ftm_entities = await ds.search_to_ftm("offshore accounts", include_entities=True)
-```
-
-### DocumentCloud (MuckRock/IRE)
-
-```python
-from emet.ftm.external.document_sources import DocumentCloudClient
-
-dc = DocumentCloudClient()
-docs = await dc.search("EPA enforcement action")
-ftm_entities = await dc.search_to_ftm("EPA enforcement action")
-text = await dc.get_text(doc_id=12345)
-```
-
-## Quick Reference Card
-
-```
-# Search Aleph
-chip = get_chip("entity_search")
-await chip.handle(SkillRequest(intent="search", parameters={"query": "..."}), ctx)
-
-# Screen sanctions
-chip = get_chip("cross_reference")
-await chip.handle(SkillRequest(intent="screen_sanctions", parameters={"query": "..."}), ctx)
-
-# Upload document
-chip = get_chip("document_analysis")
-await chip.handle(SkillRequest(intent="upload", parameters={"file_path": "...", "collection_id": "..."}), ctx)
-
-# Extract entities from text
-chip = get_chip("nlp_extraction")
-await chip.handle(SkillRequest(intent="extract", parameters={"text": "..."}), ctx)
-
-# Build network graph
-chip = get_chip("network_analysis")
-await chip.handle(SkillRequest(intent="build_graph", parameters={"collection_id": "..."}), ctx)
-
-# Trace ownership
-chip = get_chip("financial_investigation")
-await chip.handle(SkillRequest(intent="trace_ownership", parameters={"entity_name": "..."}), ctx)
-
-# Verify a claim
-chip = get_chip("verification")
-await chip.handle(SkillRequest(intent="fact_check", parameters={"claim": "...", "evidence": [...]}), ctx)
-
-# --- New: Graph analytics ---
-from emet.graph.engine import GraphEngine
-result = GraphEngine().build_from_entities(entities)
-cycles = result.analysis.find_circular_ownership()
-result.exporter.to_gexf("network.gexf")
-
-# --- New: Federated search ---
-from emet.ftm.external.federation import FederatedSearch
-results = await FederatedSearch().search_entity("Viktor Petrov", entity_type="Person")
-
-# --- New: Generate investigation report ---
-from emet.export.markdown import MarkdownReport
-md = MarkdownReport().generate_from_engine_result("Title", findings, summary="...")
-
-# --- New: Monitor for changes ---
-from emet.monitoring import ChangeDetector
-detector = ChangeDetector()
-detector.register_query("Viktor Petrov")
-alerts = await detector.check_all()
-
-# --- New: LLM analysis with evidence ---
-from emet.skills.llm_integration import SkillLLMHelper
-helper = SkillLLMHelper(llm_client, domain="corporate_analysis")
-result = await helper.analyze("Assess this structure", evidence=entities)
+# Investigate
+emet investigate "goal"                    # Stub mode
+emet --llm anthropic investigate "goal"    # With LLM
+emet --llm anthropic investigate "goal" -i # Interactive
+emet --llm anthropic investigate "goal" --dry-run  # Plan only
+
+# Search
+emet search "John Smith" --type Person
+
+# Workflow
+emet workflow corporate_ownership --target "Acme Corp"
+
+# Serve
+emet serve --http --port 8000              # HTTP API
+emet serve --transport stdio               # MCP server
+
+# Status
+emet status
 ```

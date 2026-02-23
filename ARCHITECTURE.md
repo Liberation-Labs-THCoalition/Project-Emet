@@ -2,370 +2,362 @@
 
 ## Overview
 
-The Emet is an agentic investigative journalism framework built on the [**Kintsugi**](https://github.com/Liberation-Labs-THCoalition/Project-Kintsugi) self-repairing harness architecture, adapted for the **FollowTheMoney (FtM) data ecosystem** and OCCRP's Aleph investigative platform.
+Emet is an autonomous investigative intelligence agent built on the [**Kintsugi**](https://github.com/Liberation-Labs-THCoalition/Project-Kintsugi) self-repairing harness architecture, adapted for the **FollowTheMoney (FtM) data ecosystem** and OCCRP's Aleph investigative platform.
 
-It orchestrates a swarm of specialized skill chips (agents) that collaboratively search, analyze, cross-reference, and verify investigative leads — all while operating within a strict journalism ethics governance layer.
-
-```
-┌───────────────────────────────────────────────────────────┐
-│                         Emet                              │
-│                                                           │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │              Orchestrator (Supervisor)               │  │
-│  │   Keyword routing → EFE scoring → LLM fallback      │  │
-│  └──────────────┬──────────────────────┬───────────────┘  │
-│                 │                      │                   │
-│  ┌──────────────▼──────┐  ┌───────────▼────────────────┐  │
-│  │   Cognition Layer   │  │    Governance Layer         │  │
-│  │  • EFE Calculator   │  │  • VALUES.json constitution │  │
-│  │  • Model Router     │  │  • Consensus Gates          │  │
-│  │  • LLM Abstraction  │  │  • OTel audit trail         │  │
-│  │    Ollama → Claude   │  │                             │  │
-│  │    → Stub (cascade)  │  │                             │  │
-│  └──────────────┬──────┘  └───────────┬────────────────┘  │
-│                 │                      │                   │
-│  ┌──────────────▼──────────────────────▼───────────────┐  │
-│  │              Kintsugi Engine (unchanged)             │  │
-│  │   Shadow verification • Self-repair • Resilience    │  │
-│  └──────────────┬──────────────────────┬───────────────┘  │
-│                 │                      │                   │
-│  ┌──────────────▼──────┐  ┌───────────▼────────────────┐  │
-│  │   Memory (CMA)      │  │    Security Layer           │  │
-│  │  • 3-stage pipeline │  │  • Intent Capsules          │  │
-│  │  • Investigation    │  │  • Security Shield          │  │
-│  │    context          │  │  • Behavior Monitor         │  │
-│  └─────────────────────┘  └────────────────────────────┘  │
-│                                                           │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │              FtM Data Spine                          │  │
-│  │   Aleph API • FtM entities • Federation • Blockchain│  │
-│  └──────────────┬──────────────────────┬───────────────┘  │
-│                 │                      │                   │
-│  ┌──────────────▼──────┐  ┌───────────▼────────────────┐  │
-│  │   Graph Analytics   │  │    Export & Reporting       │  │
-│  │  • NetworkX engine  │  │  • Markdown reports         │  │
-│  │  • 7 algorithms     │  │  • FtM bundles (Aleph)     │  │
-│  │  • Multi-format     │  │  • Timeline analysis        │  │
-│  │    export           │  │  • GEXF/CSV/D3/Cytoscape   │  │
-│  └──────────────┬──────┘  └───────────┬────────────────┘  │
-│                 │                      │                   │
-│  ┌──────────────▼──────────────────────▼───────────────┐  │
-│  │    Monitoring: ChangeDetector + SnapshotDiffer       │  │
-│  │    Sanctions alerts • Property changes • New entities│  │
-│  └─────────────────────────────────────────────────────┘  │
-│                                                           │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │              Skill Chips (15 agents)                 │  │
-│  │   + SkillLLMHelper (structured output, evidence     │  │
-│  │     grounding, 6 methodology prompts, token tracking)│  │
-│  │                                                     │  │
-│  │  Investigation:  entity_search, cross_reference,    │  │
-│  │    document_analysis, nlp_extraction,               │  │
-│  │    network_analysis, data_quality                   │  │
-│  │                                                     │  │
-│  │  Specialized:  financial_investigation,             │  │
-│  │    government_accountability,                       │  │
-│  │    environmental_investigation,                     │  │
-│  │    labor_investigation, corporate_research          │  │
-│  │                                                     │  │
-│  │  Monitoring:  monitoring                            │  │
-│  │  Publication: verification, story_development       │  │
-│  │  Resources:   resources                             │  │
-│  └─────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────┘
-```
-
-## Seven-Layer Architecture
-
-### Layer 1: Orchestrator (Supervisor)
-
-The orchestrator routes incoming requests to skill chips using a three-stage classification pipeline:
-
-1. **Keyword matching**: Fast scan against a 130+ keyword routing table mapping terms to 14 investigation domains
-2. **EFE scoring**: When multiple domains match or confidence is low, the Expected Free Energy calculator scores candidate domains using domain-specific weight profiles
-3. **LLM fallback**: For ambiguous requests, an LLM classifier provides final domain assignment
-
-Each domain has its own EFE weight profile reflecting journalism priorities:
-- High-risk domains (financial investigation, verification, publication) → powerful models
-- Discovery domains (entity search, monitoring) → fast models
-- Analysis domains (network, NLP, cross-reference) → balanced models
-
-### Layer 2: Cognition (EFE)
-
-The Expected Free Energy engine provides active-inference-informed decision making:
-
-- **Risk component**: Divergence between predicted and desired investigation outcomes
-- **Ambiguity component**: Uncertainty in current evidence
-- **Epistemic component**: Expected information gain from the proposed action
-
-Twelve domain-specific weight profiles bias decisions toward journalism priorities. Publication decisions are risk-averse (risk=0.50); monitoring is curiosity-driven (epistemic=0.60); digital security is maximally cautious (risk=0.60).
-
-### Layer 3: Kintsugi Engine (unchanged from Kintsugi)
-
-The self-repairing core provides:
-- **Shadow verification**: Parallel execution paths that cross-check results
-- **Self-repair**: Automatic recovery from partial failures
-- **Resilience**: Graceful degradation when services are unavailable
-
-This layer is entirely domain-agnostic and transfers verbatim from Project-Kintsugi.
-
-### Layer 4: Memory (CMA — unchanged)
-
-The three-stage Contextual Memory Architecture:
-- **Working memory**: Current investigation session state
-- **Episodic memory**: Investigation event history and decision log
-- **Semantic memory**: Learned patterns and investigation templates
-
-Investigation context maps to BDI (Beliefs-Desires-Intentions):
-- **Beliefs**: Current entity evidence and confidence levels
-- **Desires**: Investigation hypotheses to prove or disprove
-- **Intentions**: Active leads and next investigative steps
-
-### Layer 5: Security (unchanged)
-
-- **Intent Capsules**: Wrap every skill chip invocation with declared intent
-- **Security Shield**: Pre-execution validation of proposed actions
-- **Behavior Monitor**: Post-execution anomaly detection
-- **Sandbox**: Isolated execution for untrusted operations
-
-### Layer 6: Governance (adapted)
-
-- **VALUES.json**: Journalism ethics constitution (Five Pillars: accuracy, source protection, public interest, proportionality, transparency)
-- **Consensus Gates**: Human editorial approval required for publication, entity modification, and sensitive operations
-- **OTel audit trail**: Every agent action is traced for accountability
-- **Bloom accountability**: Prevents unilateral high-impact decisions
-
-### Layer 7: FtM Data Spine (NEW)
-
-The central integration layer connecting all skill chips to the FtM ecosystem:
-
-- **Aleph API client**: Async wrapper for search, entity CRUD, cross-referencing, document ingest, streaming, entity sets, and notifications
-- **FtM entity factory**: Validated entity creation with convenience methods for Person, Company, Ownership, Directorship, Payment
-- **InvestigationEntity**: Harness-level wrapper adding confidence, provenance, and investigation context to FtM entities
-- **External adapters**: OpenSanctions/yente (sanctions screening), OpenCorporates (corporate registries), ICIJ Offshore Leaks, GLEIF LEI (corporate identity)
-
-## Skill Chip Architecture
-
-Every skill chip inherits from `BaseSkillChip` and declares:
-
-| Attribute | Purpose |
-|-----------|---------|
-| `domain` | Investigation domain for routing |
-| `efe_weights` | Five Pillar weights for ethical prioritization |
-| `capabilities` | Required API/tool access |
-| `consensus_actions` | Actions requiring human approval |
-
-### Skill Chip Catalog
-
-| Chip | Domain | Key Capabilities |
-|------|--------|-----------------|
-| `entity_search` | Entity Search | Aleph search, entity expansion, external federation |
-| `cross_reference` | Cross Reference | Xref triggering, match review, sanctions screening |
-| `document_analysis` | Document Analysis | File upload, OCR, re-ingest, table extraction |
-| `nlp_extraction` | NLP Extraction | NER, relationship extraction, financial patterns |
-| `network_analysis` | Network Analysis | Graph building, centrality, community detection, ownership chains |
-| `data_quality` | Data Quality | Validation, deduplication, normalization |
-| `financial_investigation` | Financial | Ownership tracing, shell detection, sanctions exposure |
-| `government_accountability` | Government | Campaign finance, FOIA, procurement, revolving door |
-| `environmental_investigation` | Environmental | Pollution, permits, emissions, environmental justice |
-| `labor_investigation` | Labor | OSHA, wage theft, supply chain labor, forced labor |
-| `corporate_research` | Corporate | Company search, officers, corporate genealogy |
-| `monitoring` | Monitoring | Watchlists, alerts, sanctions monitoring |
-| `verification` | Verification | Fact-checking, source assessment, defamation review |
-| `story_development` | Publication | Timelines, story outlines, methodology docs |
-| `resources` | Resources | Training, methodology guides, tool reference |
-
-## Data Flow
+The system takes a natural-language investigation goal, reasons autonomously about which tools to call, executes them through a safety harness, and synthesizes findings into auditable, publication-safe reports.
 
 ```
-User Request
-    │
-    ▼
-Orchestrator (classify → route)
-    │
-    ▼
-Skill Chip (handle request)
-    │
-    ├──▶ Aleph API (search / CRUD / ingest)
-    │       │
-    │       ▼
-    │    FtM Entities
-    │
-    ├──▶ Federated Search (parallel async fan-out)
-    │    ├── OpenSanctions / yente
-    │    ├── OpenCorporates
-    │    ├── ICIJ Offshore Leaks
-    │    ├── GLEIF
-    │    └── (dedup + cache + rate limit)
-    │       │
-    │       ▼
-    │    FtM Entities (converted + provenance)
-    │
-    ├──▶ Blockchain (Etherscan ETH / Blockstream BTC)
-    │       │
-    │       ▼
-    │    FtM Entities (addresses, transactions)
-    │
-    ├──▶ Document Sources (Datashare / DocumentCloud)
-    │       │
-    │       ▼
-    │    FtM Document + NER entities + Mention links
-    │
-    ├──▶ Graph Analytics Engine (NetworkX)
-    │    ├── FtM entities → MultiDiGraph
-    │    ├── Algorithms: brokers, communities, cycles,
-    │    │   key players, hidden paths, anomalies, shell score
-    │    └── Export: GEXF, GraphML, CSV, D3, Cytoscape
-    │       │
-    │       ▼
-    │    Graph findings + export files
-    │
-    ├──▶ LLM Analysis (via SkillLLMHelper)
-    │    ├── Ollama (local, default)
-    │    ├── → Anthropic (cloud fallback)
-    │    └── → Stub (test fallback)
-    │       │
-    │       ▼
-    │    Structured findings (JSON) + token tracking
-    │
-    ├──▶ Timeline Analysis
-    │       │
-    │       ▼
-    │    Temporal events + burst/coincidence patterns
-    │
-    └──▶ Export Pipeline
-         ├── Markdown investigation report
-         ├── FtM bundle (JSONL/zip for Aleph re-import)
-         └── Graph visualization files
-    │
-    ▼
-SkillResponse
-    │
-    ├── produced_entities: [FtM entity dicts]
-    ├── result_confidence: float
-    ├── suggestions: [next steps]
-    ├── requires_consensus: bool
-    └── consensus_action: str | None
-    │
-    ▼
-Governance Check (consensus gate if required)
-    │
-    ▼
-Response to User
-
-    ┌──────────────────────────────────┐
-    │  Background: Monitoring Loop     │
-    │  ChangeDetector.check_all()      │
-    │  → Federated search snapshots    │
-    │  → SnapshotDiffer                │
-    │  → ChangeAlert (new entity,      │
-    │    sanctions, property changes)   │
-    └──────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                              EMET                                    │
+│                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │  Interfaces                                                      │ │
+│  │  CLI  │  HTTP API (FastAPI)  │  WebSocket  │  MCP  │  Slack/DC  │ │
+│  └──────────────────────┬──────────────────────────────────────────┘ │
+│                         │                                             │
+│  ┌──────────────────────▼──────────────────────────────────────────┐ │
+│  │  Investigation Bridge (adapter → agent loop)                     │ │
+│  └──────────────────────┬──────────────────────────────────────────┘ │
+│                         │                                             │
+│  ┌──────────────────────▼──────────────────────────────────────────┐ │
+│  │  Agent Loop (InvestigationAgent)                                  │ │
+│  │                                                                   │ │
+│  │  ┌─────────────┐  ┌────────────────┐  ┌──────────────────────┐  │ │
+│  │  │ LLM Decision │  │ Tool Executor  │  │ Session State        │  │ │
+│  │  │              │  │ (MCP Tools)    │  │                      │  │ │
+│  │  │ System       │  │                │  │ Entities (FtM)       │  │ │
+│  │  │  prompt +    │  │ search_entities│  │ Findings + conf.     │  │ │
+│  │  │  context →   │  │ screen_sanction│  │ Leads + priority     │  │ │
+│  │  │  JSON action │  │ trace_ownership│  │ Tool history         │  │ │
+│  │  │              │  │ osint_recon    │  │ Reasoning trace      │  │ │
+│  │  │ Heuristic    │  │ invest_blockch.│  │ Graph state          │  │ │
+│  │  │  fallback    │  │ monitor_entity │  │ Cost tracker         │  │ │
+│  │  │  when LLM    │  │ analyze_graph  │  │                      │  │ │
+│  │  │  unavailable │  │ generate_report│  │ Persistence (save/   │  │ │
+│  │  │              │  │ conclude       │  │  load/resume)        │  │ │
+│  │  └──────────────┘  └────────────────┘  └──────────────────────┘  │ │
+│  └──────────────────────┬──────────────────────────────────────────┘ │
+│                         │                                             │
+│  ┌──────────────────────▼──────────────────────────────────────────┐ │
+│  │  Safety Harness (two-mode)                                       │ │
+│  │  Investigate: audit-only (log all, block nothing)                │ │
+│  │  Publish:     enforcing (PII scrub, redact, sanitize)           │ │
+│  │                                                                   │ │
+│  │  Pre-execution checks │ Circuit breaker │ Cost caps │ Audit log  │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+│                                                                       │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  LLM Abstraction Layer                                           │ │
+│  │  Anthropic Claude → Ollama (local) → Stub (test)                │ │
+│  │  Tiered routing: fast / balanced / powerful                      │ │
+│  │  Per-session cost tracking + budget caps                         │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+│                                                                       │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  Kintsugi Infrastructure (transferred from Project-Kintsugi)    │ │
+│  │  Governance (VALUES.json, Consensus Gates, OTel, Bloom)         │ │
+│  │  Security (Intent Capsules, Shield, Monitor, Sandbox)           │ │
+│  │  Memory (CMA 3-stage pipeline, investigation context)           │ │
+│  │  BDI (Beliefs=evidence, Desires=hypotheses, Intentions=leads)   │ │
+│  │  Plugins (SDK, loader, registry) │ Multitenancy (per-session)   │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+│                                                                       │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  Data Layer                                                       │ │
+│  │  FtM Data Spine │ Aleph Client │ Federated Search               │ │
+│  │  Blockchain (ETH/BTC) │ Document Sources │ Graph Analytics      │ │
+│  │  Export (Markdown, FtM bundle, Timeline) │ Monitoring │ Workflow │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-## Modules Transferred from Kintsugi (unchanged)
+---
 
-These modules transfer verbatim — the Kintsugi architecture is domain-agnostic:
+## Agent Loop
 
-- `kintsugi_engine/` — Shadow verification, self-repair, resilience
-- `memory/` — CMA three-stage memory pipeline
-- `security/` — Intent Capsules, Shield, Monitor, Sandbox
-- `plugins/` — Plugin SDK, loader, registry
-- `multitenancy/` — Per-investigation isolation
-- `models/` — Database models
-- `api/` — FastAPI routes
-- `adapters/` — Platform adapters
-- `integrations/` — External service integrations
-- `tuning/` — Model tuning utilities
-- `config/` — Configuration management
-- `db.py` — Database connection
+The central nervous system. `InvestigationAgent` (783 lines) runs a turn-based loop:
 
-## Modules Adapted for Journalism
+```
+Goal → Initial Search → [LLM Decide → Execute → Process Result] × N → Report → Export
+```
 
-- `cognition/efe.py` — 12 investigation-specific EFE weight profiles
-- `cognition/orchestrator.py` — 130+ keyword routing table for investigation domains
-- `bdi/` — Investigation BDI templates (beliefs=evidence, desires=hypotheses, intentions=leads)
-- `governance/` — VALUES.json rewritten for journalism ethics
+### Decision Chain
 
-## Modules New for FtM
+Each turn, the agent decides what to do next:
 
-- `ftm/data_spine.py` — FtM entity factory, domain classification, investigation wrappers
-- `ftm/aleph_client.py` — Async Aleph REST API client
-- `ftm/external/adapters.py` — OpenSanctions, OpenCorporates, ICIJ, GLEIF clients
+1. **LLM decision** (`_llm_decide`): Sends accumulated context (findings, entities, open leads, tool history) plus a system prompt to the LLM. The LLM responds with a single JSON action (`{"tool": "...", "args": {...}, "reasoning": "..."}`). Temperature 0.2 for structured output, balanced tier, max 300 tokens.
 
-## New Subsystems (Sprints 1–9)
+2. **Heuristic fallback** (`_heuristic_decide`): If the LLM is unavailable, returns non-JSON, or suggests an unknown tool, the agent falls back to a deterministic strategy: follow the highest-priority open lead, mapping lead types to appropriate tools.
 
-### LLM Abstraction Layer (`cognition/llm_*`)
+3. **Conclude**: When the LLM judges the investigation complete, or no open leads remain, the agent generates a report and exits.
+
+### System Prompt
+
+The LLM receives an investigation-specific system prompt encoding:
+- Principles: follow the money, verify through multiple sources, pursue highest-value leads, know when to stop, never fabricate
+- Strategy ordering: entity search → sanctions → ownership → OSINT → blockchain → conclude
+- Output constraint: respond with ONLY a single JSON action object
+
+### Report Synthesis
+
+The agent attempts LLM-synthesized reports first (`_llm_synthesize_report`), falling back to template-based generation. LLM reports include: executive summary, key findings with confidence levels, entity network map, open questions, and methodology notes. All reports pass through PII scrubbing at the publication boundary.
+
+### Agent Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `max_turns` | 15 | Turn budget per investigation |
+| `min_confidence` | 0.3 | Minimum confidence to pursue a lead |
+| `auto_sanctions_screen` | true | Always screen discovered entities |
+| `auto_news_check` | true | Always monitor GDELT for targets |
+| `llm_provider` | stub | LLM backend (stub, ollama, anthropic) |
+| `enable_safety` | true | Enable safety harness |
+| `generate_graph` | true | Build network graph from findings |
+| `persist_path` | "" | Auto-save session to path |
+
+---
+
+## Safety Harness
+
+Two-mode design separating investigation from publication:
+
+### Investigate Mode (audit-only)
+During the investigation, the harness **logs** everything but **blocks** nothing (except true safety violations). The AI needs to see complete data — names, addresses, financial records — to make connections. Premature redaction would cripple the investigation.
+
+### Publish Mode (enforcing)
+At publication boundaries — when findings leave the system via CLI export, API response, adapter message, or report generation — the harness activates:
+- PII detection and scrubbing (names, addresses, phone numbers, SSNs, financial identifiers)
+- Sensitive data redaction
+- Output sanitization
+- Publication audit logging
+
+### Safety Infrastructure
+
+| Component | Source | Function |
+|-----------|--------|----------|
+| Pre-execution checks | Safety harness | Validate tool + args before execution |
+| Circuit breaker | Safety harness | Halt after N consecutive failures or budget exceeded |
+| Cost tracking | LLM factory | Per-session token/cost accumulation with hard caps |
+| PII scrubbing | Safety harness | Regex + heuristic detection at publication boundaries |
+| Audit trail | Safety harness | Every check, observation, block recorded |
+| Kintsugi Shield | Security layer | Intent Capsule validation |
+| Kintsugi Monitor | Security layer | Post-execution anomaly detection |
+| Consensus Gates | Governance | Human approval for publication actions |
+
+---
+
+## Interfaces
+
+### CLI (`emet/cli.py`)
+
+Five commands: `investigate`, `search`, `workflow`, `serve`, `status`.
+
+Investigation modes: standard (autonomous), interactive (approve each tool call), dry-run (plan without executing), resume (reload saved session).
+
+### HTTP API (`emet/api/`)
+
+FastAPI application factory (`create_app()`) with:
+- `POST /api/investigations` — Create and run investigation (async, returns 202)
+- `GET /api/investigations/{id}` — Poll investigation status
+- `GET /api/investigations` — List all investigations
+- `POST /api/investigations/{id}/export` — Export report (JSON/Markdown)
+- `POST /api/agent/message` — Send message to agent
+- `GET /api/agent/temporal` — Temporal event queries
+- `GET /api/config/values` — Read VALUES.json
+- `PUT /api/config/values` — Update ethics constitution
+- `GET /api/health` — Health check
+
+### WebSocket (`emet/api/websocket.py`)
+
+`WS /ws/investigations/{id}` — Real-time streaming of investigation events:
+- `tool_start`: Tool about to execute
+- `tool_result`: Tool completed with results
+- `finding`: New finding discovered
+- `report`: Report generated
+- `complete`: Investigation finished
+- `error`: Error occurred
+
+### MCP Server (`emet/mcp/`)
+
+Model Context Protocol server for Claude Desktop and other MCP-compatible clients. Exposes all 9 investigation tools plus 3 resource providers. Transport: stdio or SSE.
+
+### Adapter Bridge (`emet/adapters/investigation_bridge.py`)
+
+Unified bridge connecting Slack, Discord, and webchat adapters to the agent loop. Translates platform-specific messages into investigation goals, streams results back as formatted messages (Slack blocks, Discord embeds, webchat responses).
+
+---
+
+## LLM Abstraction Layer
 
 Provider-agnostic LLM interface with cascading fallback:
 
-- `llm_base.py`: `LLMClient` ABC with `complete`, `classify_intent`, `generate_content`, `extract_entities` methods. `LLMResponse` dataclass with text, model, provider, token counts, cost.
-- `llm_ollama.py`: Local Ollama client. Tier mapping: fast→llama3.2:3b, balanced→mistral:7b, powerful→llama3.1:70b.
-- `llm_anthropic.py`: Anthropic Claude client. Cloud fallback when local unavailable.
-- `llm_stub.py`: Canned-response client with `call_log` for test assertions.
-- `llm_factory.py`: `get_llm_client()` factory reading `LLM_PROVIDER` config. `FallbackLLMClient` wraps a chain (Ollama → Anthropic → Stub) and cascades on failure.
+| Module | Provider | Usage |
+|--------|----------|-------|
+| `llm_anthropic.py` | Anthropic Claude | Cloud, most capable |
+| `llm_ollama.py` | Local Ollama | Local, no API key needed |
+| `llm_stub.py` | Canned responses | Testing, offline |
+| `llm_factory.py` | Factory + `FallbackLLMClient` | Cascade on failure |
 
-### Data Federation (`ftm/external/`)
+### Client Interface (`LLMClient` ABC)
 
-Parallel async search across multiple data sources:
+- `complete(prompt, system, max_tokens, temperature, tier)` → `LLMResponse`
+- `classify_intent(text)` → `LLMResponse`
+- `generate_content(prompt, context)` → `LLMResponse`
+- `extract_entities(text)` → `LLMResponse`
 
-- `converters.py`: FtM converters for yente, OpenCorporates, ICIJ, GLEIF — normalizing each source's response format into standard FtM entities with provenance tracking.
-- `federation.py`: `FederatedSearch` with async fan-out to all sources simultaneously. Deduplication by entity name/ID similarity. Rate limiting and response caching per source. Graceful degradation (partial results if some sources fail).
-- `rate_limit.py`: `TokenBucketLimiter` (per-second), `MonthlyCounter` (budget caps), `ResponseCache` (TTL-based in-memory).
+### Tiered Model Routing
 
-### Blockchain Investigation (`ftm/external/blockchain.py`)
+| Tier | Ollama | Anthropic | Use Case |
+|------|--------|-----------|----------|
+| fast | llama3.2:3b | haiku | Quick classification |
+| balanced | mistral:7b | sonnet | Investigation decisions |
+| powerful | llama3.1:70b | opus | Complex synthesis |
 
-- `EtherscanClient`: ETH address validation, balance lookup, transaction history, counterparty analysis, FtM entity conversion.
-- `BlockstreamClient`: BTC address validation, balance, transaction history.
-- Automatic address type detection (ETH vs BTC by format).
+### Agent Loop Integration
 
-### Graph Analytics Engine (`graph/`)
+The agent loop creates a single LLM client at first use (lazy initialization), caches it for the session lifetime, and tracks costs via `CostTracker`. The factory accepts an explicit `provider` parameter that overrides the global setting, allowing per-investigation provider selection.
 
-NetworkX-based investigative graph analysis:
+---
 
-- `ftm_loader.py`: `FtMGraphLoader` converts FtM entity lists to NetworkX MultiDiGraph. Handles all 11 FtM relationship schemas. Edge weighting by relationship strength (Ownership=1.0 → UnknownLink=0.3). Safety cap at 50K nodes.
-- `algorithms.py`: `InvestigativeAnalysis` with 7 algorithms:
-  - `find_brokers()`: Betweenness centrality for intermediary detection
-  - `find_communities()`: Louvain (or label propagation) clustering
-  - `find_circular_ownership()`: Johnson's algorithm for ownership cycles
-  - `find_key_players()`: PageRank + degree centrality composite
-  - `find_hidden_connections()`: All shortest paths between entities
-  - `find_structural_anomalies()`: Fan-out, bridge nodes, missing officers
-  - `shell_company_topology_score()`: Composite 0–1 risk from graph signals
-- `exporters.py`: `GraphExporter` for GEXF (Gephi), GraphML, Cytoscape JSON, D3 JSON, CSV.
-- `engine.py`: `GraphEngine` orchestrating the full workflow — build from entities, Aleph, or federation → analysis → export.
+## MCP Tools
 
-### Export & Reporting (`export/`)
+9 investigation tools exposed via MCP protocol and used by the agent loop:
 
-Investigation output pipeline:
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `search_entities` | Cross-source entity search | query, entity_type, sources, limit |
+| `screen_sanctions` | Sanctions/PEP screening | entity_name, entity_type, threshold |
+| `trace_ownership` | Corporate ownership chains | entity_name, max_depth |
+| `osint_recon` | OSINT reconnaissance | target, scan_type |
+| `investigate_blockchain` | Blockchain analysis | address, chain (ethereum/bitcoin/tron) |
+| `monitor_entity` | GDELT news monitoring | entity_name, timespan |
+| `analyze_graph` | Network analysis | entities, analysis_type |
+| `generate_report` | Report generation | title, format |
+| `conclude` | End investigation | (none) |
 
-- `markdown.py`: `MarkdownReport` generates structured Markdown with executive summary, entity inventory (grouped by schema), network analysis findings, timeline, data sources, methodology & limitations.
-- `ftm_bundle.py`: `FtMBundleExporter` for Aleph re-import. JSONL, zip bundle with manifest.json, bytes for API responses. Enables round-trip: investigate in Emet → export → import into Aleph.
-- `timeline.py`: `TimelineAnalyzer` extracts dated events from 11 FtM date properties, detects temporal patterns:
-  - Burst detection: N entities created within M days (shell company indicator)
-  - Coincidence detection: incorporation timing near payment timing
+`EmetToolExecutor` routes tool calls to the appropriate subsystem (federation, graph engine, export pipeline, etc.). Two interfaces:
+- `execute()`: MCP protocol wrapper (returns `{isError, content, _raw}`) — used by MCP server
+- `execute_raw()`: Direct result dict — used by agent loop, CLI, and workflow engine
+
+---
+
+## Data Layer
+
+### FtM Data Spine (`ftm/`)
+
+Central integration layer using the [FollowTheMoney](https://followthemoney.tech/) data model:
+- `data_spine.py`: FtM entity factory with validated creation (Person, Company, Ownership, Directorship, Payment)
+- `aleph_client.py`: Async Aleph REST API client (search, CRUD, cross-reference, ingest, streaming)
+
+### Federated Search (`ftm/external/federation.py`)
+
+Parallel async fan-out across 7 data sources:
+- OpenSanctions / yente (sanctions, PEP)
+- OpenCorporates (corporate registries)
+- ICIJ Offshore Leaks (offshore entities)
+- GLEIF (Legal Entity Identifiers)
+- UK Companies House (600M+ records, officers, PSC/beneficial ownership)
+- SEC EDGAR (US filings, 13D/13G beneficial ownership, insider trading)
+
+With deduplication, per-source rate limiting (token bucket + monthly counter), response caching, and graceful degradation on partial source failure.
+
+### Blockchain (`ftm/external/blockchain.py`)
+
+Three-chain support via `BlockchainAdapter`:
+- `EtherscanClient`: ETH address validation, balance, transactions, counterparty analysis, FtM conversion
+- `BlockstreamClient`: BTC address validation, balance, transactions
+- `TronscanClient`: TRX balance, transactions, TRC-20 token transfers (USDT tracking for sanctions evasion)
+- `detect_chain()`: Auto-detect ETH (0x...), BTC (bc1.../1.../3...), or Tron (T...) addresses
+
+### Graph Analytics (`graph/`)
+
+NetworkX-based investigative analysis:
+- `ftm_loader.py`: FtM entities → NetworkX MultiDiGraph (11 relationship schemas, weighted edges, 50K node cap)
+- `algorithms.py`: 7 algorithms — find_brokers, find_communities, find_circular_ownership, find_key_players, find_hidden_connections, find_structural_anomalies, shell_company_topology_score
+- `exporters.py`: GEXF (Gephi), GraphML, Cytoscape JSON, D3 JSON, CSV
+- `engine.py`: Orchestrator (build from entities/Aleph/federation → analysis → export)
+
+### Export (`export/`)
+
+- `markdown.py`: Structured report with executive summary, entity inventory, network findings
+- `pdf.py`: Branded PDF reports (navy/gold default, configurable colors/logo). Reportlab-based.
+- `ftm_bundle.py`: JSONL/zip for Aleph re-import (round-trip investigation → export → Aleph)
+- `timeline.py`: Temporal event extraction, burst detection, coincidence detection
 
 ### Monitoring (`monitoring/`)
 
 Change detection for ongoing investigations:
+- `ChangeDetector`: Register queries, scheduled checks against federated search, snapshot management
+- `SnapshotDiffer`: Compare entity snapshots for new entities, property changes, new sanctions, removals
+- `ChangeAlert`: Structured alerts with type, severity, provenance
 
-- `ChangeAlert`: Structured alert with type (new_entity, changed_property, new_sanction, removed_entity), severity, provenance.
-- `SnapshotDiffer`: Compares two entity snapshots to detect all change types. Automatic sanctions detection from schema/topic fields.
-- `ChangeDetector`: Persistent monitoring with JSON file storage, query registration, scheduled checks against federated search, snapshot management.
+### Workflows (`workflows/`)
 
-### Document Ingestion (`ftm/external/document_sources.py`)
+Predefined multi-step investigation templates:
+- `schema.py`: Workflow definition (steps, conditions, parameters)
+- `registry.py`: Discovery and registration of built-in and custom workflows
+- `engine.py`: Execution engine with step sequencing and result collection
 
-Adapters for established document processing tools (Emet does not perform OCR — it ingests results from tools that do):
+### Document Sources (`ftm/external/document_sources.py`)
 
-- `DatashareClient`: Queries self-hosted ICIJ Datashare instances. Search, get_document, get_named_entities, search_to_ftm. NER results converted to Person/Organization FtM entities linked to source documents via Mention entities.
-- `DocumentCloudClient`: Queries MuckRock/IRE DocumentCloud API. Search, get_document, get_text, search_to_ftm, health_check.
+Adapters for established document processing tools:
+- `DatashareClient`: ICIJ Datashare (search, NER, FtM conversion)
+- `DocumentCloudClient`: MuckRock/IRE DocumentCloud (search, text extraction, FtM conversion)
 
-### Skill Chip LLM Integration (`skills/llm_integration.py`)
+---
 
-Shared LLM infrastructure for skill chips:
+## Kintsugi Infrastructure
 
-- `SkillLLMHelper`: Wraps LLM client with investigative methodology prompts, evidence grounding (FtM entity formatting), structured JSON output parsing, token/cost tracking.
-- 6 methodology-encoding system prompts: `investigative_base`, `entity_extraction`, `corporate_analysis`, `story_development`, `verification`, `financial_analysis`.
-- High-level methods: `analyze`, `analyze_structured`, `extract_entities`, `classify_risk`, `generate_narrative`, `verify_claims`.
-- `parse_json_response()`: Robust parser handling markdown fences, preamble text, embedded JSON.
-- `TokenUsage`: Cross-workflow tracking of input/output tokens, cost, and per-call breakdown.
+These modules transfer verbatim from [Project-Kintsugi](https://github.com/Liberation-Labs-THCoalition/Project-Kintsugi) — they are intentionally domain-agnostic:
+
+| Module | Function |
+|--------|----------|
+| `kintsugi_engine/` | Shadow verification, self-repair, resilience |
+| `governance/` | VALUES.json, Consensus Gates, OTel audit, Bloom accountability |
+| `security/` | Intent Capsules, Security Shield, Behavior Monitor, Sandbox |
+| `memory/` | CMA 3-stage pipeline (working, episodic, semantic) |
+| `bdi/` | Beliefs-Desires-Intentions (evidence, hypotheses, leads) |
+| `plugins/` | Plugin SDK, loader, registry |
+| `multitenancy/` | Per-investigation isolation |
+
+### Ethics Governance (adapted)
+
+VALUES.json implements the Five Pillars of Journalism:
+1. Accuracy (0.25) — Every claim traceable to source material
+2. Source Protection (0.25) — Source identity never exposed without consent
+3. Public Interest (0.20) — Scope proportionate to significance
+4. Proportionality (0.15) — Least intrusive method preferred
+5. Transparency (0.15) — Methodology documented and auditable
+
+Consensus Gates require human approval for: publishing findings, confirming entity matches, accessing sensitive data, flagging entities.
+
+---
+
+## Skill Chips (Legacy Layer)
+
+15 specialized agents from the original architecture, accessible via `get_chip()` and `SkillRequest`:
+
+| Category | Chips |
+|----------|-------|
+| Investigation | entity_search, cross_reference, document_analysis, nlp_extraction, network_analysis, data_quality |
+| Specialized | financial_investigation, government_accountability, environmental_investigation, labor_investigation, corporate_research |
+| Monitoring | monitoring |
+| Publication | verification, story_development |
+| Resources | resources |
+
+These are now secondary to the agent loop + MCP tools architecture, but remain available for direct Python API access and specialized domain workflows.
+
+---
+
+## Codebase Stats
+
+| Metric | Value |
+|--------|-------|
+| Source files | 179 Python modules |
+| Source lines | ~50,000 |
+| Tests | 2,328 |
+| Packages | 23 |
+| Commits | 40 |
+| MCP tools | 9 |
+| API routes | 19 |
+| Adapters | 5 (CLI, HTTP, WebSocket, Slack, Discord) |
