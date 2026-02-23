@@ -490,11 +490,42 @@ Rules:
         if "error" in result:
             return
 
-        # Extract entities from result
+        # Extract entities from tool-specific locations.
+        # Different tools return data under different keys:
+        #   search_entities, trace_ownership, monitor_entity → "entities"
+        #   screen_sanctions → "matches" (no "entities" key)
+        #   investigate_blockchain → "data" (nested dict)
+        #   analyze_graph → "result" (algorithm output)
+        #   check_alerts → "alerts" (change detection)
+        #   ingest_documents → "documents" (extracted docs)
+        #   generate_report → "report" (terminal, no entities)
         entities = result.get("entities", [])
-        result_count = result.get("result_count", len(entities))
+        matches = result.get("matches", [])
 
-        if entities or result_count:
+        # Determine if this result has meaningful data worth recording.
+        # Check all known data-carrying keys to avoid silent drops.
+        result_count = result.get(
+            "result_count",
+            result.get(
+                "match_count",
+                result.get(
+                    "alert_count",
+                    result.get("document_count", len(entities)),
+                ),
+            ),
+        )
+        has_data = bool(
+            entities
+            or result_count
+            or matches
+            or result.get("data")
+            or result.get("report")
+            or result.get("result")      # analyze_graph
+            or result.get("alerts")      # check_alerts
+            or result.get("documents")   # ingest_documents
+        )
+
+        if has_data:
             finding = Finding(
                 source=tool,
                 summary=_build_finding_summary(tool, action, result),
@@ -753,21 +784,27 @@ def _build_finding_summary(
         count = result.get("result_count", 0)
         return f"Entity search found {count} results for '{args.get('query', '?')}'"
     elif tool == "screen_sanctions":
-        matches = len(result.get("matches", []))
-        return f"Sanctions screening: {matches} matches for '{args.get('entity_name', '?')}'"
+        matches = result.get("match_count", len(result.get("matches", [])))
+        count = result.get("screened_count", 1)
+        return f"Sanctions screening: {matches} matches across {count} entities"
     elif tool == "trace_ownership":
-        depth = result.get("max_depth_reached", 0)
-        return f"Ownership trace reached depth {depth} for '{args.get('entity_name', '?')}'"
+        found = result.get("entities_found", len(result.get("entities", [])))
+        depth = result.get("max_depth", 0)
+        return f"Ownership trace found {found} entities (depth {depth}) for '{args.get('entity_name', '?')}'"
     elif tool == "osint_recon":
         return f"OSINT recon on '{args.get('target', '?')}'"
     elif tool == "monitor_entity":
         articles = result.get("article_count", 0)
         return f"Found {articles} news articles about '{args.get('entity_name', '?')}'"
     elif tool == "investigate_blockchain":
-        txs = len(result.get("transactions", []))
-        return f"Blockchain: {txs} transactions for {args.get('address', '?')[:20]}"
+        chain = result.get("chain", "unknown")
+        addr = args.get("address", "?")[:20]
+        return f"Blockchain ({chain}): investigated {addr}"
     elif tool == "analyze_graph":
-        return f"Graph analysis: {result.get('analysis_type', 'network')}"
+        algo = result.get("algorithm", args.get("algorithm", "network"))
+        return f"Graph analysis: {algo}"
+    elif tool == "generate_report":
+        return f"Report generated: {result.get('title', args.get('title', 'investigation'))}"
     else:
         return f"{tool}: completed"
 
@@ -779,5 +816,7 @@ def _estimate_confidence(result: dict[str, Any]) -> float:
     if result.get("result_count", 0) > 0:
         return 0.7
     if result.get("entities"):
+        return 0.6
+    if result.get("data"):
         return 0.6
     return 0.4

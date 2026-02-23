@@ -236,13 +236,19 @@ class TestAgentTools:
 
 class TestInvestigationAgent:
     def _mock_executor(self):
-        """Create a mock tool executor."""
+        """Create a mock tool executor.
+
+        Return structures must match real EmetToolExecutor._<tool>() methods
+        to prevent silent data loss in _process_result. See mock fidelity
+        audit for details.
+        """
         executor = AsyncMock()
 
         async def mock_execute(tool: str, args: dict) -> dict:
             if tool == "search_entities":
                 return {
                     "query": args.get("query", ""),
+                    "entity_type": args.get("entity_type", "Any"),
                     "result_count": 2,
                     "entities": [
                         {"id": "e1", "schema": "Person", "properties": {"name": ["John Smith"]}},
@@ -250,13 +256,68 @@ class TestInvestigationAgent:
                     ],
                 }
             elif tool == "screen_sanctions":
-                return {"entity_name": args.get("entity_name", ""), "matches": [], "result_count": 0}
+                return {
+                    "screened_count": len(args.get("entities", [{"name": "?"}])),
+                    "match_count": 0,
+                    "threshold": args.get("threshold", 0.7),
+                    "matches": [],
+                }
             elif tool == "trace_ownership":
-                return {"entity_name": args.get("entity_name", ""), "entities": [], "max_depth_reached": 2}
+                return {
+                    "target": args.get("entity_name", ""),
+                    "max_depth": args.get("max_depth", 3),
+                    "include_officers": args.get("include_officers", True),
+                    "entities_found": 0,
+                    "entities": [],
+                }
+            elif tool == "investigate_blockchain":
+                return {
+                    "address": args.get("address", ""),
+                    "chain": args.get("chain", "ethereum"),
+                    "depth": args.get("depth", 1),
+                    "data": {"balance": "0", "transactions": []},
+                }
             elif tool == "monitor_entity":
-                return {"entity_name": args.get("entity_name", ""), "article_count": 3}
+                return {
+                    "entity_name": args.get("entity_name", ""),
+                    "entity_type": args.get("entity_type", "Any"),
+                    "monitoring_registered": True,
+                    "alert_types": args.get("alert_types", ["all"]),
+                    "article_count": 3,
+                    "unique_sources": ["Reuters", "BBC"],
+                    "average_tone": 0.5,
+                    "entities": [],
+                    "result_count": 3,
+                }
             elif tool == "generate_report":
                 return {"title": args.get("title", ""), "format": "markdown", "report": "# Report"}
+            elif tool == "analyze_graph":
+                return {
+                    "algorithm": args.get("algorithm", "community_detection"),
+                    "node_count": 5,
+                    "edge_count": 8,
+                    "result": {"communities": [{"id": 1, "members": ["e1", "e2"]}]},
+                }
+            elif tool == "osint_recon":
+                return {
+                    "target": args.get("target", ""),
+                    "scan_type": args.get("scan_type", "passive"),
+                    "result_count": 1,
+                    "entities": [
+                        {"id": "osint1", "schema": "Domain", "properties": {"name": [args.get("target", "")]}},
+                    ],
+                }
+            elif tool == "check_alerts":
+                return {
+                    "alert_count": 0,
+                    "alerts": [],
+                }
+            elif tool == "ingest_documents":
+                return {
+                    "source": args.get("source", "datashare"),
+                    "document_count": 1,
+                    "documents": [{"id": "doc1", "title": "Test Document"}],
+                }
             return {}
 
         executor.execute = mock_execute
@@ -471,3 +532,181 @@ class TestSessionResume:
         assert len(restored.findings) == 1
         assert restored.findings[0].summary == "Shell company detected"
         assert "Found suspicious pattern" in restored.reasoning_trace
+
+
+# ---------------------------------------------------------------------------
+# Mock fidelity audit: verify _process_result creates findings for ALL tools
+# ---------------------------------------------------------------------------
+
+
+class TestProcessResultFidelity:
+    """Verify _process_result handles real return structures from every tool.
+
+    The execute_raw bug (commit aacda92) showed that mocks can mask silent
+    data loss. These tests use the REAL return structures from each tool
+    handler and verify that findings are actually created.
+    """
+
+    def _make_agent(self):
+        config = AgentConfig(max_turns=5, llm_provider="stub")
+        return InvestigationAgent(config=config)
+
+    @pytest.mark.asyncio
+    async def test_search_entities_creates_finding(self):
+        agent = self._make_agent()
+        session = Session(goal="test")
+        # Real return from _search_entities
+        result = {
+            "query": "Acme Corp",
+            "entity_type": "Company",
+            "result_count": 2,
+            "entities": [
+                {"id": "e1", "schema": "Company", "properties": {"name": ["Acme Corp"]}},
+            ],
+        }
+        await agent._process_result(session, {"tool": "search_entities", "args": {"query": "Acme Corp"}}, result)
+        assert len(session.findings) == 1
+        assert session.findings[0].source == "search_entities"
+
+    @pytest.mark.asyncio
+    async def test_screen_sanctions_creates_finding(self):
+        """REGRESSION: sanctions results were silently dropped (no 'entities' key)."""
+        agent = self._make_agent()
+        session = Session(goal="test")
+        # Real return from _screen_sanctions — note: NO 'entities' key
+        result = {
+            "screened_count": 1,
+            "match_count": 2,
+            "threshold": 0.7,
+            "matches": [
+                {"name": "Bad Actor", "score": 0.95, "datasets": ["us_ofac_sdn"]},
+                {"name": "Bad Corp", "score": 0.88, "datasets": ["eu_sanctions"]},
+            ],
+        }
+        await agent._process_result(session, {"tool": "screen_sanctions", "args": {}}, result)
+        assert len(session.findings) == 1, "Sanctions matches must create a finding"
+        assert session.findings[0].confidence == 0.85  # matches present → high confidence
+
+    @pytest.mark.asyncio
+    async def test_investigate_blockchain_creates_finding(self):
+        """REGRESSION: blockchain results were silently dropped (data under 'data' key)."""
+        agent = self._make_agent()
+        session = Session(goal="test")
+        # Real return from _investigate_blockchain — note: NO 'entities' key
+        result = {
+            "address": "0x1234567890abcdef1234567890abcdef12345678",
+            "chain": "ethereum",
+            "depth": 1,
+            "data": {"balance": "1.5", "transactions": [{"hash": "0xabc", "value": "0.5"}]},
+        }
+        await agent._process_result(
+            session,
+            {"tool": "investigate_blockchain", "args": {"address": "0x1234"}},
+            result,
+        )
+        assert len(session.findings) == 1, "Blockchain results must create a finding"
+
+    @pytest.mark.asyncio
+    async def test_trace_ownership_creates_finding(self):
+        agent = self._make_agent()
+        session = Session(goal="test")
+        # Real return from _trace_ownership
+        result = {
+            "target": "Acme Corp",
+            "max_depth": 3,
+            "include_officers": True,
+            "entities_found": 1,
+            "entities": [
+                {"id": "e1", "schema": "Company", "properties": {"name": ["Acme Offshore Ltd"]}},
+            ],
+        }
+        await agent._process_result(session, {"tool": "trace_ownership", "args": {"entity_name": "Acme"}}, result)
+        assert len(session.findings) == 1
+
+    @pytest.mark.asyncio
+    async def test_monitor_entity_creates_finding(self):
+        agent = self._make_agent()
+        session = Session(goal="test")
+        # Real return from _monitor_entity
+        result = {
+            "entity_name": "Bad Corp",
+            "entity_type": "Company",
+            "monitoring_registered": True,
+            "alert_types": ["all"],
+            "article_count": 5,
+            "unique_sources": ["Reuters"],
+            "average_tone": -2.1,
+            "entities": [],
+            "result_count": 5,
+        }
+        await agent._process_result(session, {"tool": "monitor_entity", "args": {"entity_name": "Bad Corp"}}, result)
+        assert len(session.findings) == 1
+
+    @pytest.mark.asyncio
+    async def test_empty_result_creates_no_finding(self):
+        agent = self._make_agent()
+        session = Session(goal="test")
+        result = {}
+        await agent._process_result(session, {"tool": "search_entities", "args": {}}, result)
+        assert len(session.findings) == 0
+
+    @pytest.mark.asyncio
+    async def test_error_result_creates_no_finding(self):
+        agent = self._make_agent()
+        session = Session(goal="test")
+        result = {"error": "Connection refused"}
+        await agent._process_result(session, {"tool": "search_entities", "args": {}}, result)
+        assert len(session.findings) == 0
+
+    @pytest.mark.asyncio
+    async def test_analyze_graph_creates_finding(self):
+        """REGRESSION: graph results silently dropped ('result' key not checked)."""
+        agent = self._make_agent()
+        session = Session(goal="test")
+        # Real return from _analyze_graph — no 'entities' key
+        result = {
+            "algorithm": "community_detection",
+            "node_count": 15,
+            "edge_count": 22,
+            "result": {
+                "communities": [
+                    {"id": 1, "members": ["e1", "e2", "e3"]},
+                    {"id": 2, "members": ["e4", "e5"]},
+                ],
+            },
+        }
+        await agent._process_result(session, {"tool": "analyze_graph", "args": {"algorithm": "community_detection"}}, result)
+        assert len(session.findings) == 1, "analyze_graph results must create a finding"
+
+    @pytest.mark.asyncio
+    async def test_check_alerts_creates_finding(self):
+        """REGRESSION: alert results silently dropped ('alerts' key not checked)."""
+        agent = self._make_agent()
+        session = Session(goal="test")
+        # Real return from _check_alerts
+        result = {
+            "alert_count": 2,
+            "alerts": [
+                {"type": "sanctions_change", "entity": "Bad Corp", "severity": "high", "details": "New designation"},
+                {"type": "property_change", "entity": "Bad Corp", "severity": "medium", "details": "Director changed"},
+            ],
+        }
+        await agent._process_result(session, {"tool": "check_alerts", "args": {}}, result)
+        assert len(session.findings) == 1, "check_alerts results must create a finding"
+
+    @pytest.mark.asyncio
+    async def test_ingest_documents_creates_finding(self):
+        """REGRESSION: document ingestion results silently dropped ('documents' key not checked)."""
+        agent = self._make_agent()
+        session = Session(goal="test")
+        # Real return from _ingest_documents
+        result = {
+            "source": "datashare",
+            "document_count": 3,
+            "documents": [
+                {"id": "doc1", "title": "Panama Papers - Acme Holdings"},
+                {"id": "doc2", "title": "Tax Filing 2023"},
+            ],
+        }
+        await agent._process_result(session, {"tool": "ingest_documents", "args": {"source": "datashare"}}, result)
+        assert len(session.findings) == 1, "ingest_documents results must create a finding"
