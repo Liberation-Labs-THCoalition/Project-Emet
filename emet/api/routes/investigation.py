@@ -247,12 +247,18 @@ async def list_investigations(
 # POST /api/investigations/{id}/export — scrubbed export
 # ---------------------------------------------------------------------------
 
-@router.post("/{inv_id}/export", response_model=ExportResponse)
-async def export_investigation(inv_id: str) -> ExportResponse:
+@router.post("/{inv_id}/export")
+async def export_investigation(
+    inv_id: str,
+    format: str = Query("json", enum=["json", "pdf"]),
+) -> Any:
     """Export investigation with PII scrubbed for publication.
 
     This is the publication boundary — all PII is redacted from the
     exported data. Internal session data remains unmodified.
+
+    Query parameters:
+        format: "json" (default) or "pdf" for a branded PDF download.
     """
     inv = _investigations.get(inv_id)
     if inv is None:
@@ -283,6 +289,32 @@ async def export_investigation(inv_id: str) -> ExportResponse:
     scrubbed = harness.scrub_dict_for_publication(raw_report, "api_export")
     pub_audit = harness.audit_summary()
     pii_count = pub_audit.get("publication_scrubs", 0)
+
+    if format == "pdf":
+        import tempfile
+        from pathlib import Path
+        from fastapi.responses import FileResponse
+        from emet.export.markdown import InvestigationReport
+        from emet.export.pdf import PDFReport
+
+        ir = InvestigationReport(
+            title=session.goal,
+            summary=scrubbed.get("summary", {}).get("finding_count", ""),
+            entities=scrubbed.get("entities", []),
+            data_sources=[{"name": s, "url": ""} for s in inv.get("sources_used", [])],
+            caveats=[f"{pii_count} PII items redacted"] if pii_count else [],
+            metadata={"investigation_id": inv_id},
+        )
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        pdf = PDFReport()
+        pdf.generate(ir, tmp.name)
+
+        return FileResponse(
+            tmp.name,
+            media_type="application/pdf",
+            filename=f"investigation_{inv_id}.pdf",
+        )
 
     return ExportResponse(
         id=inv_id,

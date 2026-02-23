@@ -381,7 +381,10 @@ def _print_session_results(session: Any) -> None:
 
 
 def _save_report(session: Any, path: str) -> None:
-    """Save investigation report to JSON.
+    """Save investigation report to JSON or PDF.
+
+    If path ends in .pdf, generates a branded PDF report.
+    Otherwise, writes scrubbed JSON.
 
     This is a publication boundary — PII is scrubbed from the output.
     Internal session data (entities, raw findings) is preserved in the
@@ -404,15 +407,30 @@ def _save_report(session: Any, path: str) -> None:
     harness = SafetyHarness.from_defaults()
     output = harness.scrub_dict_for_publication(output, "cli_export")
     pub_audit = harness.audit_summary()
-
-    with open(path, "w") as fp:
-        json.dump(output, fp, indent=2)
-
     scrub_count = pub_audit.get("publication_scrubs", 0)
-    if scrub_count:
-        print(f"\nSaved to {path} ({scrub_count} PII items scrubbed)")
+
+    if path.lower().endswith(".pdf"):
+        from emet.export.markdown import InvestigationReport
+        from emet.export.pdf import PDFReport
+
+        ir = InvestigationReport(
+            title=session.goal,
+            summary=f"{summary.get('finding_count', 0)} findings, {summary.get('entity_count', 0)} entities",
+            entities=output.get("entities", []),
+            caveats=[f"{scrub_count} PII items redacted"] if scrub_count else [],
+            metadata={"goal": session.goal},
+        )
+        pdf = PDFReport()
+        pdf.generate(ir, path)
+        print(f"\nPDF report saved to {path}")
     else:
-        print(f"\nSaved to {path}")
+        with open(path, "w") as fp:
+            json.dump(output, fp, indent=2)
+
+        if scrub_count:
+            print(f"\nSaved to {path} ({scrub_count} PII items scrubbed)")
+        else:
+            print(f"\nSaved to {path}")
 
 
 async def _cmd_search(args: argparse.Namespace) -> None:
@@ -429,7 +447,7 @@ async def _cmd_search(args: argparse.Namespace) -> None:
         params["sources"] = args.source
 
     print(f"🔍 Searching: {args.query}")
-    result = await executor.execute("search_entities", params)
+    result = await executor.execute_raw("search_entities", params)
 
     entities = result.get("entities", [])
     print(f"Found {len(entities)} entities:\n")
@@ -503,18 +521,22 @@ def _cmd_serve(args: argparse.Namespace) -> None:
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     else:
         # MCP mode
-        from emet.mcp.server import create_server
+        from emet.mcp.server import EmetMCPServer
 
         print(f"Starting Emet MCP server (transport: {args.transport})")
-        server = create_server()
 
         if args.transport == "stdio":
-            import mcp.server.stdio
-            asyncio.run(
-                mcp.server.stdio.run_server(server)
-            )
+            server = EmetMCPServer()
+            asyncio.run(server.run_stdio())
+        elif args.transport == "sse":
+            server = EmetMCPServer()
+            host = getattr(args, "host", "0.0.0.0")
+            port = getattr(args, "port", 9400)
+            print(f"  SSE endpoint: http://{host}:{port}/sse")
+            print(f"  Health: http://{host}:{port}/health")
+            asyncio.run(server.run_sse(host=host, port=port))
         else:
-            print(f"Transport {args.transport} not yet implemented")
+            print(f"Unknown transport: {args.transport}")
             sys.exit(1)
 
 

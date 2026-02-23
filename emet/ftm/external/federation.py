@@ -42,6 +42,14 @@ from emet.ftm.external.adapters import (
     YenteClient,
     YenteConfig,
 )
+from emet.ftm.external.companies_house import (
+    CompaniesHouseClient,
+    CompaniesHouseConfig,
+)
+from emet.ftm.external.edgar import (
+    EDGARClient,
+    EDGARConfig,
+)
 from emet.ftm.external.converters import (
     gleif_search_to_ftm_list,
     icij_search_to_ftm_list,
@@ -72,12 +80,16 @@ class FederationConfig:
     enable_opencorporates: bool = True
     enable_icij: bool = True
     enable_gleif: bool = True
+    enable_companies_house: bool = True
+    enable_edgar: bool = True
 
     # Client configs
     yente_config: YenteConfig = field(default_factory=YenteConfig)
     opencorporates_config: OpenCorporatesConfig = field(default_factory=OpenCorporatesConfig)
     icij_config: ICIJConfig = field(default_factory=ICIJConfig)
     gleif_config: GLEIFConfig = field(default_factory=GLEIFConfig)
+    companies_house_config: CompaniesHouseConfig = field(default_factory=CompaniesHouseConfig)
+    edgar_config: EDGARConfig = field(default_factory=EDGARConfig)
 
     # Rate limits
     opencorporates_monthly_limit: int = 200
@@ -180,6 +192,10 @@ class FederatedSearch:
             self._clients["icij"] = ICIJClient(self._config.icij_config)
         if self._config.enable_gleif:
             self._clients["gleif"] = GLEIFClient(self._config.gleif_config)
+        if self._config.enable_companies_house:
+            self._clients["companies_house"] = CompaniesHouseClient(self._config.companies_house_config)
+        if self._config.enable_edgar:
+            self._clients["edgar"] = EDGARClient(self._config.edgar_config)
 
         # Rate limiters
         self._oc_counter = MonthlyCounter(
@@ -308,6 +324,53 @@ class FederatedSearch:
         self._cache.set(cache_key, entities)
         return entities
 
+    async def _search_companies_house(
+        self, query: str, limit: int, entity_type: str,
+    ) -> list[dict[str, Any]]:
+        """Search UK Companies House."""
+        client = self._clients.get("companies_house")
+        if not client:
+            return []
+
+        cache_key = self._cache.make_key(
+            "companies_house", "search", {"q": query, "limit": limit, "type": entity_type}
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # Companies House has both company and officer search
+        result = await client.search_companies_ftm(query, limit=limit)
+        entities = result.get("entities", [])
+
+        self._cache.set(cache_key, entities)
+        return entities
+
+    async def _search_edgar(
+        self, query: str, limit: int, entity_type: str,
+    ) -> list[dict[str, Any]]:
+        """Search SEC EDGAR for US-registered entities."""
+        client = self._clients.get("edgar")
+        if not client:
+            return []
+
+        # EDGAR only has companies/filers, skip for person-only searches
+        if entity_type.lower() in ("person", "people"):
+            return []
+
+        cache_key = self._cache.make_key(
+            "edgar", "search", {"q": query, "limit": limit}
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        result = await client.search_companies_ftm(query, limit=limit)
+        entities = result.get("entities", [])
+
+        self._cache.set(cache_key, entities)
+        return entities
+
     # -- Federated search ---------------------------------------------------
 
     async def search_entity(
@@ -348,6 +411,8 @@ class FederatedSearch:
             "opencorporates": self._search_opencorporates,
             "icij": self._search_icij,
             "gleif": self._search_gleif,
+            "companies_house": self._search_companies_house,
+            "edgar": self._search_edgar,
         }
 
         for source_name, method in source_methods.items():

@@ -11,10 +11,13 @@ Generates structured outputs from investigation results:
 from emet.export.markdown import MarkdownReport
 from emet.export.ftm_bundle import FtMBundleExporter
 from emet.export.timeline import TimelineAnalyzer, TimelineEvent
+from emet.export.pdf import PDFReport, PDFBranding
 
 __all__ = [
     "MarkdownReport",
     "FtMBundleExporter",
     "TimelineAnalyzer",
     "TimelineEvent",
+    "PDFReport",
+    "PDFBranding",
 ]

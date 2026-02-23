@@ -370,6 +370,8 @@ class TestFederatedSearchSourceStatus:
             enable_opencorporates=False,
             enable_icij=False,
             enable_gleif=False,
+            enable_companies_house=False,
+            enable_edgar=False,
         ))
         status = federation.source_status
         assert status["enabled_sources"] == []
