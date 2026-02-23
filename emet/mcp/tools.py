@@ -241,7 +241,7 @@ EMET_TOOLS: list[MCPToolDef] = [
                 },
                 "chain": {
                     "type": "string",
-                    "enum": ["ethereum", "bitcoin"],
+                    "enum": ["ethereum", "bitcoin", "tron"],
                     "default": "ethereum",
                 },
                 "depth": {
@@ -492,7 +492,7 @@ class EmetToolExecutor:
         self._pool.clear()
 
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute an MCP tool call."""
+        """Execute an MCP tool call.  Returns MCP-protocol wrapped result."""
         handler = self._tool_map.get(tool_name)
         if handler is None:
             return {
@@ -512,6 +512,20 @@ class EmetToolExecutor:
                 "isError": True,
                 "content": [{"type": "text", "text": f"Error: {exc}"}],
             }
+
+    async def execute_raw(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute a tool and return the raw result dict (no MCP wrapping).
+
+        Used by the agent loop and other internal callers that need direct
+        access to entities, article counts, etc.  Raises on unknown tool;
+        propagates tool exceptions.
+        """
+        handler = self._tool_map.get(tool_name)
+        if handler is None:
+            raise ValueError(f"Unknown tool: {tool_name}")
+        return await handler(**arguments)
 
     def list_tools(self) -> list[dict[str, Any]]:
         """Return MCP-formatted tool list."""
@@ -667,6 +681,8 @@ class EmetToolExecutor:
         )
         if chain == "ethereum":
             result = await adapter.get_eth_address(address)
+        elif chain == "tron":
+            result = await adapter.get_tron_address(address)
         else:
             result = await adapter.get_btc_address(address)
 
@@ -682,17 +698,44 @@ class EmetToolExecutor:
         entity_name: str,
         entity_type: str = "Any",
         alert_types: list[str] | None = None,
+        timespan: str = "7d",
     ) -> dict[str, Any]:
-        """Register entity for monitoring."""
+        """Monitor entity: GDELT news search + register for change detection."""
         from emet.monitoring import ChangeDetector
+        from emet.ftm.external.gdelt import GDELTClient
 
+        # 1. Run GDELT news search for immediate results
+        gdelt = self._get_or_create("gdelt", GDELTClient)
+        try:
+            news = await gdelt.search_news_ftm(
+                query=entity_name,
+                timespan=timespan,
+            )
+        except Exception as exc:
+            logger.warning("GDELT search failed for %r: %s", entity_name, exc)
+            news = {
+                "article_count": 0,
+                "entity_count": 0,
+                "unique_sources": [],
+                "average_tone": 0.0,
+                "entities": [],
+            }
+
+        # 2. Register for ongoing change monitoring
         detector = self._get_or_create("change_detector", ChangeDetector)
         detector.register_query(entity_name, entity_type=entity_type)
+
         return {
-            "registered": True,
             "entity_name": entity_name,
             "entity_type": entity_type,
+            "monitoring_registered": True,
             "alert_types": alert_types or ["all"],
+            # GDELT results
+            "article_count": news.get("article_count", 0),
+            "unique_sources": news.get("unique_sources", []),
+            "average_tone": news.get("average_tone", 0.0),
+            "entities": news.get("entities", []),
+            "result_count": news.get("article_count", 0),
         }
 
     async def _check_alerts(

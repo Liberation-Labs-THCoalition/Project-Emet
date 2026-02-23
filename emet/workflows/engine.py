@@ -514,31 +514,16 @@ class WorkflowEngine:
         # Execute
         try:
             logger.info("Executing step '%s' (tool: %s)", step.id, step.tool)
-            result = await executor.execute(step.tool, resolved_params)
+            result = await executor.execute_raw(step.tool, resolved_params)
 
             elapsed = time.monotonic() - start_time
             completed_at = datetime.now(timezone.utc).isoformat()
-
-            if result.get("isError"):
-                error_text = ""
-                for content in result.get("content", []):
-                    if content.get("type") == "text":
-                        error_text = content.get("text", "")
-                return StepResult(
-                    step_id=step.id,
-                    tool=step.tool,
-                    status=StepStatus.FAILED,
-                    error=error_text,
-                    started_at=started_at,
-                    completed_at=completed_at,
-                    duration_seconds=elapsed,
-                )
 
             return StepResult(
                 step_id=step.id,
                 tool=step.tool,
                 status=StepStatus.COMPLETED,
-                output=result.get("_raw", {}),
+                output=result,
                 started_at=started_at,
                 completed_at=completed_at,
                 duration_seconds=elapsed,

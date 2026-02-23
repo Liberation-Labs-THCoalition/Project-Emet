@@ -260,6 +260,7 @@ class TestInvestigationAgent:
             return {}
 
         executor.execute = mock_execute
+        executor.execute_raw = mock_execute
         return executor
 
     @pytest.mark.asyncio
@@ -320,6 +321,7 @@ class TestInvestigationAgent:
 
         agent._executor = MagicMock()
         agent._executor.execute = failing_execute
+        agent._executor.execute_raw = failing_execute
 
         session = await agent.investigate("test")
 
@@ -340,6 +342,7 @@ class TestInvestigationAgent:
 
         agent._executor = MagicMock()
         agent._executor.execute = minimal_execute
+        agent._executor.execute_raw = minimal_execute
 
         session = await agent.investigate("nothing here")
 

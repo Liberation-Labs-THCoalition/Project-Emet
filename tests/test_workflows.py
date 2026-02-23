@@ -358,6 +358,16 @@ class MockExecutor:
         })
         return response
 
+    async def execute_raw(self, tool_name: str, arguments: dict) -> dict:
+        wrapped = await self.execute(tool_name, arguments)
+        if wrapped.get("isError"):
+            error_text = ""
+            for content in wrapped.get("content", []):
+                if content.get("type") == "text":
+                    error_text = content.get("text", "")
+            raise RuntimeError(error_text or "Tool execution failed")
+        return wrapped.get("_raw", wrapped)
+
 
 class TestWorkflowEngine:
     """Test workflow engine execution."""
@@ -505,9 +515,7 @@ class TestWorkflowEngine:
         mock_entities = [{"id": "e1", "name": "Bad Corp"}]
         executor = MockExecutor({
             "search_entities": {
-                "isError": False,
-                "content": [{"type": "text", "text": "ok"}],
-                "_raw": {"result_count": 1, "entities": mock_entities},
+                "result_count": 1, "entities": mock_entities,
             },
         })
         engine = WorkflowEngine(tool_executor=executor)

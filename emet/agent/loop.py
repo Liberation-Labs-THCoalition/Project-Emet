@@ -222,7 +222,7 @@ class InvestigationAgent:
         # Entity search
         session.record_reasoning(f"Initial entity search for: {goal}")
         try:
-            result = await self._executor.execute(
+            result = await self._executor.execute_raw(
                 "search_entities",
                 {"query": goal, "entity_type": "Any", "limit": 20},
             )
@@ -270,7 +270,7 @@ class InvestigationAgent:
         # News monitoring
         if self._config.auto_news_check:
             try:
-                result = await self._executor.execute(
+                result = await self._executor.execute_raw(
                     "monitor_entity",
                     {"entity_name": goal, "timespan": "7d"},
                 )
@@ -451,7 +451,7 @@ Rules:
         args = action.get("args", {})
 
         try:
-            result = await self._executor.execute(tool, args)
+            result = await self._executor.execute_raw(tool, args)
 
             # Safety: report success to circuit breaker
             self._harness.report_tool_success(tool)
@@ -592,7 +592,7 @@ Rules:
                     schema = entity.get("schema", "")
                     entity_summaries.append(f"[{schema}] {names[0] if names else eid}")
 
-                result = await self._executor.execute(
+                result = await self._executor.execute_raw(
                     "generate_report",
                     {
                         "title": f"Investigation: {session.goal}",

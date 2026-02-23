@@ -51,6 +51,26 @@ class TestFullPipeline:
         config = AgentConfig(max_turns=3, enable_safety=True)
         agent = InvestigationAgent(config=config)
 
+        # Use a deterministic mock executor so we don't hit real servers
+        async def mock_execute(tool: str, args: dict) -> dict:
+            if tool == "search_entities":
+                return {
+                    "result_count": 2,
+                    "entities": [
+                        {"id": "e1", "schema": "Person", "properties": {"name": ["John Smith"]}},
+                        {"id": "e2", "schema": "Company", "properties": {"name": ["Acme Corp"]}},
+                    ],
+                }
+            elif tool == "monitor_entity":
+                return {"entity_name": args.get("entity_name", ""), "article_count": 1, "entities": []}
+            elif tool == "screen_sanctions":
+                return {"entity_name": args.get("entity_name", ""), "matches": [], "result_count": 0}
+            elif tool == "generate_report":
+                return {"title": "Report", "report": "# Report\nFindings..."}
+            return {}
+
+        agent._executor.execute_raw = mock_execute
+
         session = await agent.investigate("John Smith sanctions check")
 
         # Safety audit should be attached
