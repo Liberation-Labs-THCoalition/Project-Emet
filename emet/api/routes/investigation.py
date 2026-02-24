@@ -46,6 +46,7 @@ class InvestigationRequest(BaseModel):
     auto_sanctions: bool = Field(True, description="Auto-screen against sanctions")
     auto_news: bool = Field(True, description="Auto-check news")
     dry_run: bool = Field(False, description="Plan only, don't execute tools")
+    demo_mode: bool = Field(False, description="Use bundled demo data (auto-enabled with stub LLM)")
 
 
 class InvestigationStatus(BaseModel):
@@ -64,6 +65,7 @@ class InvestigationStatus(BaseModel):
     findings: list[dict[str, Any]] = []
     reasoning_trace: list[str] = []
     safety_audit: dict[str, Any] = {}
+    report: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -126,6 +128,9 @@ async def start_investigation(
 async def _run_investigation(inv_id: str, req: InvestigationRequest) -> None:
     """Background task that runs the actual investigation."""
     try:
+        # Auto-enable demo mode with stub LLM (matches CLI behavior)
+        demo = req.demo_mode or req.llm_provider == "stub"
+
         config = AgentConfig(
             max_turns=req.max_turns,
             llm_provider=req.llm_provider,
@@ -133,6 +138,7 @@ async def _run_investigation(inv_id: str, req: InvestigationRequest) -> None:
             auto_news_check=req.auto_news,
             enable_safety=True,
             generate_graph=True,
+            demo_mode=demo,
         )
 
         agent = InvestigationAgent(config=config)
@@ -205,6 +211,7 @@ async def get_investigation(inv_id: str) -> InvestigationStatus:
         findings=findings,
         reasoning_trace=reasoning,
         safety_audit=safety_audit,
+        report=session.report if session else None,
         error=inv.get("error"),
     )
 

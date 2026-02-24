@@ -80,7 +80,7 @@ Current adapter returns 404 on every query. ICIJ is keyless/free — should just
 
 ## Tier 2: Undermines Credibility in Evaluation
 
-### 2.1 ⬜ Smoke-test MCP server end-to-end
+### 2.1 ✅ Smoke-test MCP server end-to-end (DONE)
 **Problem:** Tools work via execute_raw() but we haven't verified JSON-RPC works.
 `emet serve --transport stdio` hasn't been tested with actual MCP messages.
 
