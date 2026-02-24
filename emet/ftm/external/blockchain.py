@@ -378,6 +378,7 @@ def crypto_address_to_ftm(
         source_url = f"https://blockstream.info/address/{address}"
 
     entity: dict[str, Any] = {
+        "id": f"crypto:{chain}:{address}",
         "schema": "Thing",  # FtM doesn't have CryptoWallet — use Thing
         "properties": props,
         "_provenance": _provenance(

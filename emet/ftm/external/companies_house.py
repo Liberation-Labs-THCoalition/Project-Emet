@@ -267,6 +267,7 @@ class CompaniesHouseClient:
             props["sourceUrl"] = [f"https://find-and-update.company-information.service.gov.uk/company/{cn}"]
 
         return {
+            "id": f"ch:{cn}" if cn else f"ch:{props.get('name', [''])[0]}",
             "schema": "Company",
             "properties": {k: v for k, v in props.items() if v and v[0]},
         }
@@ -280,7 +281,16 @@ class CompaniesHouseClient:
         name = officer.get("name", "")
         role = officer.get("officer_role", "director")
 
+        # Extract officer ID from links if available
+        officer_id = ""
+        links = officer.get("links", {})
+        if isinstance(links, dict):
+            appt_link = links.get("officer", {}).get("appointments", "")
+            if appt_link:
+                officer_id = appt_link.split("/officers/")[-1].split("/")[0]
+
         person: dict[str, Any] = {
+            "id": f"ch-officer:{officer_id}" if officer_id else f"ch-officer:{name}",
             "schema": "Person",
             "properties": {"name": [name]},
         }
@@ -295,6 +305,7 @@ class CompaniesHouseClient:
             person["properties"]["birthDate"] = [f"{dob['year']}-{month}"]
 
         directorship: dict[str, Any] = {
+            "id": f"ch-dir:{officer_id or name}:{company_number}",
             "schema": "Directorship",
             "properties": {
                 "director": [name],
@@ -327,7 +338,9 @@ class CompaniesHouseClient:
         control_summary = "; ".join(natures) if natures else "significant control"
 
         if "individual" in kind:
+            psc_id = psc.get("links", {}).get("self", name)
             person: dict[str, Any] = {
+                "id": f"ch-psc:{psc_id}",
                 "schema": "Person",
                 "properties": {"name": [name]},
             }
@@ -337,6 +350,7 @@ class CompaniesHouseClient:
             entities.append(person)
 
             entities.append({
+                "id": f"ch-ownership:{psc_id}:{company_number}",
                 "schema": "Ownership",
                 "properties": {
                     "owner": [name],
@@ -347,15 +361,18 @@ class CompaniesHouseClient:
 
         elif "corporate" in kind or "legal" in kind:
             corp_name = psc.get("name", "")
+            reg_num = psc.get("identification", {}).get("registration_number", "")
             entities.append({
+                "id": f"ch-psc-corp:{reg_num or corp_name}",
                 "schema": "Company",
                 "properties": {
                     "name": [corp_name],
                     "jurisdiction": [psc.get("identification", {}).get("country_registered", "")],
-                    "registrationNumber": [psc.get("identification", {}).get("registration_number", "")],
+                    "registrationNumber": [reg_num],
                 },
             })
             entities.append({
+                "id": f"ch-ownership:{reg_num or corp_name}:{company_number}",
                 "schema": "Ownership",
                 "properties": {
                     "owner": [corp_name],

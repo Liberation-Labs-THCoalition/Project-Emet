@@ -420,7 +420,10 @@ Rules:
 
         args: dict[str, Any] = {}
         if lead.tool == "screen_sanctions":
-            args = {"entity_name": lead.query, "entity_type": "Any", "threshold": 0.6}
+            args = {
+                "entities": [{"name": lead.query, "schema": "LegalEntity"}],
+                "threshold": 0.6,
+            }
         elif lead.tool == "trace_ownership":
             args = {"entity_name": lead.query, "max_depth": 3}
         elif lead.tool == "osint_recon":

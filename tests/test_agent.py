@@ -6,6 +6,7 @@ heuristic routing, and CLI commands.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -410,6 +411,140 @@ class TestInvestigationAgent:
         # Should conclude early — no entities means no leads
         assert session.turn_count < 10
         assert any("conclud" in r.lower() for r in session.reasoning_trace)
+    @pytest.mark.asyncio
+    async def test_heuristic_args_match_tool_signatures(self):
+        """REGRESSION: heuristic sent wrong arg names (entity_name vs entities)."""
+        config = AgentConfig(max_turns=1, auto_news_check=False, auto_sanctions_screen=False, llm_provider="stub")
+        agent = InvestigationAgent(config=config)
+
+        session = Session(goal="test")
+
+        # Add leads for each tool type the heuristic handles
+        test_leads = [
+            Lead(description="Screen X", query="Bad Corp", tool="screen_sanctions", priority=0.9),
+            Lead(description="Trace X", query="Shell Ltd", tool="trace_ownership", priority=0.8),
+            Lead(description="OSINT X", query="suspect.com", tool="osint_recon", priority=0.7),
+            Lead(description="Search X", query="Acme", tool="search_entities", priority=0.6),
+            Lead(description="Blockchain X", query="0xabc123", tool="investigate_blockchain", priority=0.5),
+            Lead(description="Monitor X", query="Dodgy Inc", tool="monitor_entity", priority=0.4),
+        ]
+
+        for lead in test_leads:
+            session.add_lead(lead)
+            lead.status = "open"
+            action = agent._heuristic_decide(session)
+
+            # The key test: args must be valid keyword arguments for the tool handler
+            # screen_sanctions needs "entities" (list), not "entity_name" (str)
+            if action["tool"] == "screen_sanctions":
+                assert "entities" in action["args"], "screen_sanctions needs 'entities' list, not 'entity_name'"
+                assert isinstance(action["args"]["entities"], list)
+            elif action["tool"] == "trace_ownership":
+                assert "entity_name" in action["args"]
+            elif action["tool"] == "osint_recon":
+                assert "target" in action["args"]
+            elif action["tool"] == "search_entities":
+                assert "query" in action["args"]
+
+            # Reset lead so next iteration picks up the next one
+            lead.status = "resolved"
+
+    @pytest.mark.asyncio
+    async def test_partial_tool_failure_still_produces_findings(self):
+        """If one tool fails but others work, investigation should still produce results."""
+        config = AgentConfig(max_turns=5, auto_news_check=False, llm_provider="stub")
+        agent = InvestigationAgent(config=config)
+
+        call_count = {"search": 0, "sanctions": 0}
+
+        async def partial_executor(tool, args):
+            if tool == "search_entities":
+                call_count["search"] += 1
+                return {
+                    "query": args.get("query", ""),
+                    "entity_type": "Any",
+                    "result_count": 1,
+                    "entities": [
+                        {"id": "e1", "schema": "Company", "properties": {"name": ["Acme Corp"]}},
+                    ],
+                }
+            elif tool == "screen_sanctions":
+                call_count["sanctions"] += 1
+                raise ConnectionError("OpenSanctions API down")
+            elif tool == "trace_ownership":
+                raise TimeoutError("OpenCorporates timed out")
+            elif tool == "generate_report":
+                return {"title": args.get("title", ""), "format": "markdown", "report": "# Report"}
+            return {}
+
+        agent._executor = MagicMock()
+        agent._executor.execute = partial_executor
+        agent._executor.execute_raw = partial_executor
+
+        session = await agent.investigate("Acme Corp corruption")
+
+        # Should still have findings from search_entities
+        assert session.finding_count >= 1, "Should have findings even with partial failures"
+        # Errors should be logged, not swallowed
+        assert any("failed" in r.lower() for r in session.reasoning_trace)
+
+
+class TestConcurrentInvestigations:
+    """Verify two simultaneous investigations don't cross-contaminate."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_sessions_isolated(self):
+        config = AgentConfig(max_turns=3, auto_news_check=False, llm_provider="stub")
+
+        call_log_a = []
+        call_log_b = []
+
+        def _make_executor(label, log):
+            async def execute(tool, args):
+                log.append((tool, args.get("query", args.get("entity_name", label))))
+                if tool == "search_entities":
+                    return {
+                        "query": args.get("query", ""),
+                        "entity_type": "Any",
+                        "result_count": 1,
+                        "entities": [
+                            {"id": f"{label}-e1", "schema": "Company",
+                             "properties": {"name": [f"{label} Corp"]}},
+                        ],
+                    }
+                elif tool == "generate_report":
+                    return {"title": label, "format": "markdown", "report": f"# {label}"}
+                return {}
+
+            mock = MagicMock()
+            mock.execute = execute
+            mock.execute_raw = execute
+            return mock
+
+        agent_a = InvestigationAgent(config=config)
+        agent_a._executor = _make_executor("InvestA", call_log_a)
+
+        agent_b = InvestigationAgent(config=config)
+        agent_b._executor = _make_executor("InvestB", call_log_b)
+
+        # Run concurrently
+        session_a, session_b = await asyncio.gather(
+            agent_a.investigate("Investigation Alpha"),
+            agent_b.investigate("Investigation Beta"),
+        )
+
+        # Sessions should be independent
+        assert session_a.goal == "Investigation Alpha"
+        assert session_b.goal == "Investigation Beta"
+
+        # Entities should not leak between sessions
+        a_entities = [f.entities for f in session_a.findings]
+        b_entities = [f.entities for f in session_b.findings]
+
+        a_flat = [e.get("id", "") for group in a_entities for e in group]
+        b_flat = [e.get("id", "") for group in b_entities for e in group]
+
+        assert not set(a_flat) & set(b_flat), f"Entity leak: {set(a_flat) & set(b_flat)}"
 
 
 # ===========================================================================

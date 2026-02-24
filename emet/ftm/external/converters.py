@@ -119,6 +119,7 @@ def oc_company_to_ftm(oc_data: dict[str, Any]) -> dict[str, Any]:
     oc_id = f"{company.get('jurisdiction_code', '')}/{company.get('company_number', '')}"
 
     return {
+        "id": f"oc:{oc_id}",
         "schema": "Company",
         "properties": {k: v for k, v in props.items() if v and v[0]},
         "_provenance": _provenance(
@@ -149,7 +150,10 @@ def oc_officer_to_ftm(oc_data: dict[str, Any]) -> dict[str, Any]:
     if officer.get("company"):
         company_name = officer["company"].get("name", "")
 
+    officer_id = str(officer.get("id", ""))
+
     entity = {
+        "id": f"oc-officer:{officer_id}" if officer_id else f"oc-officer:{officer.get('name', '')}",
         "schema": "Person",
         "properties": {k: v for k, v in props.items() if v and v[0]},
         "_provenance": _provenance(
@@ -237,6 +241,7 @@ def icij_node_to_ftm(node: dict[str, Any]) -> dict[str, Any]:
     node_id = str(node.get("node_id", node.get("id", "")))
 
     return {
+        "id": f"icij:{node_id}" if node_id else f"icij:{props.get('name', [''])[0]}",
         "schema": schema,
         "properties": {k: v for k, v in props.items() if v and v[0]},
         "_provenance": _provenance(
@@ -284,9 +289,13 @@ def icij_relationships_to_ftm(
         else:
             schema = "UnknownLink"
 
+        target_id = str(rel.get("node_id", ""))
         entity = {
+            "id": f"icij-rel:{node_id}-{target_id}",
             "schema": schema,
-            "properties": {},
+            "properties": {
+                "name": [f"{schema}: {node_id} → {target_id}"],
+            },
             "_provenance": _provenance(
                 source="icij_offshore_leaks",
                 source_id=f"{node_id}-{rel.get('node_id', '')}",
@@ -295,7 +304,7 @@ def icij_relationships_to_ftm(
             ),
             "_relationship_hints": {
                 "source_node": node_id,
-                "target_node": str(rel.get("node_id", "")),
+                "target_node": target_id,
                 "relationship_type": rel_type,
             },
         }
@@ -358,6 +367,7 @@ def gleif_record_to_ftm(record: dict[str, Any]) -> dict[str, Any]:
     entity_status = entity_data.get("status", "")
 
     return {
+        "id": f"gleif:{lei}" if lei else f"gleif:{props.get('name', [''])[0]}",
         "schema": "Company",
         "properties": {k: v for k, v in props.items() if v and v[0]},
         "_provenance": _provenance(
@@ -404,8 +414,12 @@ def gleif_relationship_to_ftm(
         props["startDate"] = [relationship["startDate"][:10]]
 
     return {
+        "id": f"gleif-rel:{parent_lei}-{child_lei}",
         "schema": "Ownership",
-        "properties": props,
+        "properties": {
+            "name": [f"Ownership: {parent_lei} → {child_lei}"],
+            **props,
+        },
         "_provenance": _provenance(
             source="gleif",
             source_id=f"{parent_lei}-{child_lei}",
