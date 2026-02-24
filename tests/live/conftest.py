@@ -2,21 +2,25 @@
 
 These tests require real API access and should only run on the research
 cluster with API keys configured.  They are skipped by default in CI
-unless explicitly invoked with `pytest -m live`.
+unless explicitly invoked with ``pytest -m live tests/live/``.
 
-Environment variables (set in .env or cluster secrets):
-    OPENSANCTIONS_API_URL   - yente API endpoint
-    OPENCORPORATES_API_KEY  - OpenCorporates API token
-    COMPANIES_HOUSE_API_KEY - UK Companies House API key
-    ETHERSCAN_API_KEY       - Etherscan.io API key
-    TRON_API_KEY            - TronGrid API key (optional)
-    ANTHROPIC_API_KEY       - Anthropic API key (for LLM fallback tests)
-    OLLAMA_BASE_URL         - Ollama server URL (default http://localhost:11434)
+Required env vars (set in .env or cluster secrets):
+    OPENSANCTIONS_API_KEY    - OpenSanctions screening API
+    OPENCORPORATES_API_TOKEN - OpenCorporates corporate search
+    COMPANIES_HOUSE_API_KEY  - UK Companies House (free)
+    ETHERSCAN_API_KEY        - Etherscan blockchain explorer (free)
+    ANTHROPIC_API_KEY        - Anthropic Claude (for LLM decision tests)
+
+Optional:
+    EDGAR_USER_AGENT         - SEC EDGAR (free, no key, just User-Agent)
+    OLLAMA_HOST              - Ollama local LLM server URL
 """
 
 from __future__ import annotations
 
 import os
+import tempfile
+
 import pytest
 from dataclasses import dataclass
 
@@ -28,8 +32,8 @@ from dataclasses import dataclass
 def pytest_configure(config):
     config.addinivalue_line("markers", "live: requires real API access")
     config.addinivalue_line("markers", "live_slow: live test taking >30 seconds")
-    config.addinivalue_line("markers", "live_llm: requires Ollama or Anthropic")
-    config.addinivalue_line("markers", "live_blockchain: requires blockchain API keys")
+    config.addinivalue_line("markers", "live_llm: requires Anthropic or Ollama")
+    config.addinivalue_line("markers", "live_blockchain: requires Etherscan API key")
 
 
 # ---------------------------------------------------------------------------
@@ -39,29 +43,29 @@ def pytest_configure(config):
 @dataclass
 class LiveTestConfig:
     """Tracks which APIs are available for testing."""
-    opensanctions_url: str = ""
+    opensanctions_key: str = ""
     opencorporates_key: str = ""
     companies_house_key: str = ""
     etherscan_key: str = ""
-    tron_key: str = ""
     anthropic_key: str = ""
-    ollama_url: str = ""
+    ollama_host: str = ""
+    edgar_user_agent: str = ""
 
     @classmethod
     def from_env(cls) -> "LiveTestConfig":
         return cls(
-            opensanctions_url=os.getenv("OPENSANCTIONS_API_URL", ""),
-            opencorporates_key=os.getenv("OPENCORPORATES_API_KEY", ""),
+            opensanctions_key=os.getenv("OPENSANCTIONS_API_KEY", ""),
+            opencorporates_key=os.getenv("OPENCORPORATES_API_TOKEN", ""),
             companies_house_key=os.getenv("COMPANIES_HOUSE_API_KEY", ""),
             etherscan_key=os.getenv("ETHERSCAN_API_KEY", ""),
-            tron_key=os.getenv("TRON_API_KEY", ""),
             anthropic_key=os.getenv("ANTHROPIC_API_KEY", ""),
-            ollama_url=os.getenv("OLLAMA_BASE_URL", ""),
+            ollama_host=os.getenv("OLLAMA_HOST", ""),
+            edgar_user_agent=os.getenv("EDGAR_USER_AGENT", ""),
         )
 
     @property
     def has_opensanctions(self) -> bool:
-        return bool(self.opensanctions_url)
+        return bool(self.opensanctions_key)
 
     @property
     def has_opencorporates(self) -> bool:
@@ -77,19 +81,21 @@ class LiveTestConfig:
 
     @property
     def has_llm(self) -> bool:
-        return bool(self.anthropic_key or self.ollama_url)
+        return bool(self.anthropic_key or self.ollama_host)
+
+    @property
+    def has_anthropic(self) -> bool:
+        return bool(self.anthropic_key)
 
     @property
     def available_sources(self) -> list[str]:
-        sources = []
+        sources = ["icij", "gleif", "edgar"]  # Always available (no key)
         if self.has_opensanctions:
             sources.append("opensanctions")
         if self.has_opencorporates:
             sources.append("opencorporates")
         if self.has_companies_house:
             sources.append("companies_house")
-        if self.has_blockchain:
-            sources.append("blockchain")
         return sources
 
 
@@ -104,15 +110,24 @@ def live_config() -> LiveTestConfig:
 
 
 @pytest.fixture
+def tmp_dir():
+    """Temporary directory for session/audit output."""
+    d = tempfile.mkdtemp(prefix="emet_live_")
+    yield d
+    import shutil
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.fixture
 def require_opensanctions(live_config):
     if not live_config.has_opensanctions:
-        pytest.skip("OPENSANCTIONS_API_URL not set")
+        pytest.skip("OPENSANCTIONS_API_KEY not set")
 
 
 @pytest.fixture
 def require_opencorporates(live_config):
     if not live_config.has_opencorporates:
-        pytest.skip("OPENCORPORATES_API_KEY not set")
+        pytest.skip("OPENCORPORATES_API_TOKEN not set")
 
 
 @pytest.fixture
@@ -130,7 +145,13 @@ def require_blockchain(live_config):
 @pytest.fixture
 def require_llm(live_config):
     if not live_config.has_llm:
-        pytest.skip("No LLM available (ANTHROPIC_API_KEY or OLLAMA_BASE_URL)")
+        pytest.skip("No LLM available (ANTHROPIC_API_KEY or OLLAMA_HOST)")
+
+
+@pytest.fixture
+def require_anthropic(live_config):
+    if not live_config.has_anthropic:
+        pytest.skip("ANTHROPIC_API_KEY not set")
 
 
 @pytest.fixture

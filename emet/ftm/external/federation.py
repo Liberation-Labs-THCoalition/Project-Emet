@@ -106,6 +106,36 @@ class FederationConfig:
     # Deduplication
     dedup_similarity_threshold: float = 0.85  # 0–1, name similarity for dedup
 
+    @classmethod
+    def from_env(cls) -> "FederationConfig":
+        """Create config from environment variables.
+
+        Reads API keys from standard env vars. Sources without keys
+        are auto-disabled so federation doesn't waste time on 401s.
+        """
+        import os
+
+        opensanctions_key = os.getenv("OPENSANCTIONS_API_KEY", "")
+        opencorporates_key = os.getenv("OPENCORPORATES_API_TOKEN", "")
+        companies_house_key = os.getenv("COMPANIES_HOUSE_API_KEY", "")
+        edgar_agent = os.getenv("EDGAR_USER_AGENT", "")
+
+        return cls(
+            enable_opensanctions=bool(opensanctions_key),
+            enable_opencorporates=bool(opencorporates_key),
+            enable_companies_house=bool(companies_house_key),
+            # ICIJ and GLEIF are free — always enabled
+            enable_icij=True,
+            enable_gleif=True,
+            enable_edgar=True,
+            yente_config=YenteConfig(api_key=opensanctions_key),
+            opencorporates_config=OpenCorporatesConfig(api_token=opencorporates_key),
+            companies_house_config=CompaniesHouseConfig(api_key=companies_house_key),
+            edgar_config=EDGARConfig(
+                user_agent=edgar_agent or EDGARConfig.user_agent,
+            ),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Result types

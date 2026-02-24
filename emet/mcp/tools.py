@@ -558,7 +558,7 @@ class EmetToolExecutor:
 
         if sources:
             # Custom source set — create per-call (rare path)
-            config = FederationConfig()
+            config = FederationConfig.from_env()
             config.enable_opensanctions = "opensanctions" in sources
             config.enable_opencorporates = "opencorporates" in sources
             config.enable_icij = "icij" in sources
@@ -567,7 +567,7 @@ class EmetToolExecutor:
         else:
             # Default config — reuse pooled instance
             federation = self._get_or_create(
-                "federation", lambda: FederatedSearch(config=FederationConfig())
+                "federation", lambda: FederatedSearch(config=FederationConfig.from_env())
             )
         et = entity_type if entity_type != "Any" else ""
         federated_result = await federation.search_entity(
@@ -687,9 +687,12 @@ class EmetToolExecutor:
         include_officers: bool = True,
     ) -> dict[str, Any]:
         """Corporate ownership tracing."""
-        from emet.ftm.external.federation import FederatedSearch
+        from emet.ftm.external.federation import FederatedSearch, FederationConfig
 
-        federation = self._get_or_create("federation_default", FederatedSearch)
+        federation = self._get_or_create(
+            "federation_default",
+            lambda: FederatedSearch(config=FederationConfig.from_env()),
+        )
         federated_result = await federation.search_entity(
             entity_name, entity_type="Company", limit_per_source=10,
         )
@@ -712,7 +715,7 @@ class EmetToolExecutor:
         entity_type: str = "Person",
     ) -> dict[str, Any]:
         """Sanctions screening via OpenSanctions."""
-        from emet.ftm.external.adapters import YenteClient
+        from emet.ftm.external.adapters import YenteClient, YenteConfig
 
         # Normalize: accept either entities list or entity_name string
         if entities is None:
@@ -720,7 +723,9 @@ class EmetToolExecutor:
         if entity_name and not entities:
             entities = [{"name": entity_name, "schema": entity_type}]
 
-        client = self._get_or_create("yente", YenteClient)
+        client = self._get_or_create("yente", lambda: YenteClient(
+            YenteConfig(api_key=__import__("os").getenv("OPENSANCTIONS_API_KEY", "")),
+        ))
 
         # Convert input entities to FtM-style dicts for the match API
         ftm_entities = []
@@ -760,10 +765,17 @@ class EmetToolExecutor:
         depth: int = 1,
     ) -> dict[str, Any]:
         """Blockchain address investigation."""
-        from emet.ftm.external.blockchain import BlockchainAdapter, BlockchainConfig
+        from emet.ftm.external.blockchain import (
+            BlockchainAdapter, BlockchainConfig, EtherscanConfig,
+        )
+        import os
 
         adapter = self._get_or_create(
-            "blockchain", lambda: BlockchainAdapter(BlockchainConfig())
+            "blockchain", lambda: BlockchainAdapter(BlockchainConfig(
+                etherscan_config=EtherscanConfig(
+                    api_key=os.getenv("ETHERSCAN_API_KEY", ""),
+                ),
+            ))
         )
         if chain == "ethereum":
             result = await adapter.get_eth_address(address)
