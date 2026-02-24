@@ -463,7 +463,8 @@ class EmetToolExecutor:
     spinning up fresh connections on every invocation.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, demo_mode: bool = False) -> None:
+        self.demo_mode = demo_mode
         self._tool_map: dict[str, Callable[..., Coroutine[Any, Any, dict]]] = {
             "search_entities": self._search_entities,
             "osint_recon": self._osint_recon,
@@ -721,6 +722,14 @@ class EmetToolExecutor:
             m for m in raw_matches
             if m.get("score", 0) >= threshold
         ]
+
+        # Demo mode: inject demo sanctions matches when real screening returns empty
+        if not results and self.demo_mode:
+            from emet.data.demo_entities import get_demo_sanctions_matches
+            entity_names = {e.get("name", "").lower() for e in entities}
+            for demo_match in get_demo_sanctions_matches():
+                if demo_match.get("name", "").lower() in entity_names:
+                    results.append(demo_match)
 
         return {
             "screened_count": len(entities),

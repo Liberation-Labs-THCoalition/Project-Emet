@@ -30,7 +30,7 @@ Key files modified in prior sessions:
 
 ## Tier 1: Blocks a Demo / First-Use
 
-### 1.1 ⬜ Fix first-use experience (stub mode produces convincing demo)
+### 1.1 ✅ Fix first-use experience (demo mode) (DONE)
 **Problem:** `emet investigate "..." --llm stub` returns 0 entities, 0 findings.
 Without API keys, all federated sources fail (401/404). New user gets empty report.
 
@@ -48,7 +48,7 @@ Without API keys, all federated sources fail (401/404). New user gets empty repo
 - emet/cli.py (--demo flag or auto-detect)
 - emet/data/demo_entities.json (new: bundled demo data)
 
-### 1.2 ⬜ Fix ICIJ Offshore Leaks adapter (404 on search)
+### 1.2 ✅ Fix ICIJ Offshore Leaks adapter (DONE)
 **Problem:** ICIJ moved from `/api/v1/search` to a reconciliation API in Jan 2025.
 Current adapter returns 404 on every query. ICIJ is keyless/free — should just work.
 

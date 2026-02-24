@@ -58,6 +58,10 @@ def main() -> None:
     inv.add_argument(
         "--resume", help="Resume from a saved session file",
     )
+    inv.add_argument(
+        "--demo", action="store_true",
+        help="Use bundled demo data (auto-enabled with --llm stub)",
+    )
 
     # search
     srch = subparsers.add_parser("search", help="Quick entity search")
@@ -131,6 +135,9 @@ async def _cmd_investigate(args: argparse.Namespace) -> None:
     """Run a full agentic investigation."""
     from emet.agent import InvestigationAgent, AgentConfig
 
+    # Auto-enable demo mode with stub LLM (no API keys needed)
+    demo = getattr(args, "demo", False) or args.llm == "stub"
+
     config = AgentConfig(
         max_turns=args.max_turns,
         auto_sanctions_screen=not args.no_sanctions,
@@ -139,6 +146,7 @@ async def _cmd_investigate(args: argparse.Namespace) -> None:
         verbose=args.verbose,
         persist_path=args.save or "",
         generate_graph=True,
+        demo_mode=demo,
     )
 
     # --- Resume mode ---
@@ -164,7 +172,10 @@ async def _cmd_investigate(args: argparse.Namespace) -> None:
 
     # --- Standard mode ---
     print(f"🔍 Starting investigation: {args.goal}")
-    print(f"   Max turns: {config.max_turns} | LLM: {config.llm_provider}")
+    mode_info = f"Max turns: {config.max_turns} | LLM: {config.llm_provider}"
+    if demo:
+        mode_info += " | DEMO MODE (bundled data)"
+    print(f"   {mode_info}")
     print()
 
     session = await agent.investigate(args.goal)
@@ -367,6 +378,13 @@ def _print_session_results(session: Any) -> None:
         print(f"\nREASONING TRACE:")
         for step in session.reasoning_trace:
             print(f"  → {step}")
+
+    # Report
+    if session.report:
+        print(f"\nREPORT:")
+        print("-" * 40)
+        print(session.report)
+        print("-" * 40)
 
     # Safety audit
     if hasattr(session, '_safety_audit') and session._safety_audit:

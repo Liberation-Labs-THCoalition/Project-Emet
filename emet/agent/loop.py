@@ -122,6 +122,8 @@ class AgentConfig:
     persist_path: str = ""         # Auto-save session to this path
     # Visualization
     generate_graph: bool = True    # Generate Cytoscape graph at conclusion
+    # Demo
+    demo_mode: bool = False        # Use bundled demo data when sources return empty
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +140,7 @@ class InvestigationAgent:
 
     def __init__(self, config: AgentConfig | None = None) -> None:
         self._config = config or AgentConfig()
-        self._executor = EmetToolExecutor()
+        self._executor = EmetToolExecutor(demo_mode=self._config.demo_mode)
         # Safety harness
         if self._config.enable_safety:
             self._harness = SafetyHarness.from_defaults()
@@ -234,6 +236,25 @@ class InvestigationAgent:
             session.record_tool_use("search_entities", {"query": goal}, result)
 
             entities = result.get("entities", [])
+
+            # Demo mode: always inject bundled demo data for a compelling
+            # first-use experience (real results may be sparse or irrelevant)
+            if self._config.demo_mode:
+                from emet.data.demo_entities import get_demo_entities
+                demo_entities = get_demo_entities(goal)
+                if demo_entities:
+                    # Use demo entities as the primary dataset; they form a
+                    # coherent investigation network that demonstrates all
+                    # pipeline capabilities
+                    entities = demo_entities
+                    session.record_reasoning(
+                        f"Demo mode: loaded {len(entities)} entities "
+                        f"(Meridian Holdings investigation scenario)"
+                    )
+                    result["entities"] = entities
+                    result["source_stats"] = {"demo_dataset": len(entities)}
+                    result["result_count"] = len(entities)
+
             if entities:
                 finding = Finding(
                     source="search_entities",
