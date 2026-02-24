@@ -120,6 +120,7 @@ class AgentConfig:
     tool_timeout_seconds: float = 60.0  # Per-tool-call timeout (prevents hangs)
     # Persistence
     persist_path: str = ""         # Auto-save session to this path
+    memory_dir: str = ""           # Directory for cross-session memory (auto-recall prior findings)
     # Visualization
     generate_graph: bool = True    # Generate Cytoscape graph at conclusion
     # Demo
@@ -158,6 +159,15 @@ class InvestigationAgent:
         """
         session = Session(goal=goal)
         session.record_reasoning(f"Starting investigation: {goal}")
+
+        # Phase 0: Recall prior intelligence from memory
+        if self._config.memory_dir:
+            prior = self._recall_prior_intelligence(session)
+            if prior:
+                session.record_reasoning(
+                    f"Memory recall: {len(prior)} relevant findings from prior investigations"
+                )
+                session._prior_intelligence = prior
 
         # Phase 1: Initial search
         await self._initial_search(session)
@@ -214,6 +224,17 @@ class InvestigationAgent:
         if self._config.persist_path:
             from emet.agent.persistence import save_session
             save_session(session, self._config.persist_path)
+
+        # Auto-save to memory directory for cross-session recall
+        if self._config.memory_dir:
+            from emet.agent.persistence import save_session
+            from pathlib import Path
+            mem_path = Path(self._config.memory_dir) / f"{session.id}.json"
+            try:
+                save_session(session, mem_path)
+                session.record_reasoning(f"Session saved to memory: {mem_path}")
+            except Exception as exc:
+                logger.debug("Memory auto-save failed: %s", exc)
 
         # Attach safety audit to session
         session._safety_audit = self._harness.audit_summary()
@@ -486,9 +507,42 @@ Rules:
         return None
 
     def _heuristic_decide(self, session: Session) -> dict[str, Any]:
-        """Fallback: follow the highest-priority open lead."""
-        leads = session.get_open_leads()
+        """Fallback: phase-aware heuristic investigation strategy.
 
+        Phases:
+          1. EXPLORE — follow high-priority leads (sanctions, ownership)
+          2. ANALYZE — run graph analysis once enough entities accumulated
+          3. CONCLUDE — generate report and end
+        """
+        leads = session.get_open_leads()
+        turn = session.turn_count
+        max_turns = self._config.max_turns
+        remaining = max_turns - turn
+
+        # --- Phase 3: Running out of budget → wrap up ---
+        if remaining <= 1:
+            return {
+                "tool": "conclude",
+                "args": {},
+                "reasoning": "Budget exhausted — concluding investigation",
+            }
+
+        # --- Phase 2: Enough entities → graph analysis (run once) ---
+        already_analyzed = any(
+            t.get("tool") == "analyze_graph" for t in session.tool_history
+        )
+        if (
+            not already_analyzed
+            and session.entity_count >= 8
+            and (remaining <= 3 or turn >= max_turns // 2)
+        ):
+            return {
+                "tool": "analyze_graph",
+                "args": {"algorithm": "full"},
+                "reasoning": f"Accumulated {session.entity_count} entities — running network analysis before concluding",
+            }
+
+        # --- Phase 1: Follow leads ---
         if not leads:
             return {"tool": "conclude", "args": {}, "reasoning": "No leads remaining"}
 
@@ -498,7 +552,8 @@ Rules:
         args: dict[str, Any] = {}
         if lead.tool == "screen_sanctions":
             args = {
-                "entities": [{"name": lead.query, "schema": "LegalEntity"}],
+                "entity_name": lead.query,
+                "entity_type": "LegalEntity",
                 "threshold": 0.6,
             }
         elif lead.tool == "trace_ownership":
@@ -511,6 +566,8 @@ Rules:
             args = {"address": lead.query, "chain": "ethereum"}
         elif lead.tool == "monitor_entity":
             args = {"entity_name": lead.query, "timespan": "24h"}
+        elif lead.tool == "analyze_graph":
+            args = {"algorithm": "full"}
         else:
             args = {"query": lead.query}
 
@@ -856,6 +913,68 @@ Be factual. Only report what the findings support. Flag low-confidence items exp
 
         except Exception as exc:
             session.record_reasoning(f"Graph generation failed: {exc}")
+
+    def _recall_prior_intelligence(
+        self, session: Session
+    ) -> list[dict[str, Any]]:
+        """Recall findings from past investigations with overlapping entities.
+
+        Scans saved sessions in memory_dir for entity name overlap with
+        the current investigation goal. Returns relevant prior findings
+        that the LLM can use for context.
+        """
+        from emet.agent.persistence import list_sessions, load_session
+        from pathlib import Path
+
+        memory_dir = Path(self._config.memory_dir)
+        if not memory_dir.exists():
+            return []
+
+        goal_words = set(session.goal.lower().split())
+        prior_findings: list[dict[str, Any]] = []
+
+        try:
+            past_sessions = list_sessions(memory_dir)
+        except Exception:
+            return []
+
+        for meta in past_sessions[:50]:  # Cap to avoid slow scans
+            # Quick relevance check: goal word overlap
+            past_goal = meta.get("goal", "").lower()
+            overlap = goal_words & set(past_goal.split())
+            if len(overlap) < 1:
+                continue
+
+            # Don't recall from this exact session
+            if meta.get("session_id") == session.id:
+                continue
+
+            try:
+                past = load_session(meta["path"])
+                for finding in past.findings:
+                    # Only include substantive findings
+                    if finding.confidence >= 0.5 and finding.summary:
+                        prior_findings.append({
+                            "source_session": meta.get("session_id", ""),
+                            "source_goal": meta.get("goal", ""),
+                            "source": finding.source,
+                            "summary": finding.summary,
+                            "confidence": finding.confidence,
+                            "entity_count": len(finding.entities),
+                        })
+            except Exception:
+                continue
+
+        # Deduplicate by summary
+        seen = set()
+        unique: list[dict[str, Any]] = []
+        for f in prior_findings:
+            key = f["summary"][:80]
+            if key not in seen:
+                seen.add(key)
+                unique.append(f)
+
+        return unique[:10]  # Cap at 10 most relevant
 
 
 # ---------------------------------------------------------------------------

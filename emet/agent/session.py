@@ -72,6 +72,7 @@ class Session:
         # Set by agent loop after investigation
         self._investigation_graph: Any = None
         self._safety_audit: dict[str, Any] = {}
+        self._prior_intelligence: list[dict[str, Any]] = []  # Cross-session memory
 
     def add_finding(self, finding: Finding) -> None:
         """Record a finding and index its entities."""
@@ -166,6 +167,12 @@ class Session:
             parts.append("\nRECENT FINDINGS:")
             for f in self.findings[-5:]:
                 parts.append(f"  - [{f.source}] {f.summary}")
+
+        # Prior intelligence from past investigations
+        if self._prior_intelligence:
+            parts.append(f"\nPRIOR INTELLIGENCE ({len(self._prior_intelligence)} findings from past investigations):")
+            for p in self._prior_intelligence[:5]:
+                parts.append(f"  - [{p['source']}] {p['summary']} (conf={p['confidence']:.1f})")
 
         # Open leads
         open_leads = self.get_open_leads()
