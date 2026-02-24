@@ -109,6 +109,7 @@ async def _run_streaming_investigation(
     """Run an investigation and stream progress via WebSocket."""
     max_turns = options.get("max_turns", 15)
     llm_provider = options.get("llm_provider", "stub")
+    demo = options.get("demo_mode", False) or llm_provider == "stub"
 
     await _broadcast(inv_id, {
         "type": "started",
@@ -122,6 +123,7 @@ async def _run_streaming_investigation(
             llm_provider=llm_provider,
             enable_safety=True,
             generate_graph=True,
+            demo_mode=demo,
         )
 
         agent = InvestigationAgent(config=config)
@@ -163,6 +165,7 @@ async def _run_streaming_investigation(
         await _broadcast(inv_id, {
             "type": "completed",
             "summary": summary,
+            "report": session.report,
         })
 
     except Exception as exc:
