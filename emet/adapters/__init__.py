@@ -52,27 +52,27 @@ from emet.adapters.shared import (
     InMemoryAllowlistStore,
 )
 
-from emet.adapters.email import (
-    # Adapter
-    EmailAdapter,
-    EmailAdapterError,
-    # Config
-    EmailConfig,
-    EmailProvider,
-    IMAPConfig,
-    SMTPConfig,
-    # Parser
-    EmailParser,
-    ParsedEmail,
-    EmailAttachment,
-    # Notifications
-    NotificationManager,
-    GrantDeadlineNotification,
-    ReportDelivery,
-    # Templates
-    TemplateRenderer,
-    EmailTemplate,
-)
+# Email adapter (quarantined to _future/ — import only if available)
+try:
+    from emet.adapters.email import (
+        EmailAdapter,
+        EmailAdapterError,
+        EmailConfig,
+        EmailProvider,
+        IMAPConfig,
+        SMTPConfig,
+        EmailParser,
+        ParsedEmail,
+        EmailAttachment,
+        NotificationManager,
+        GrantDeadlineNotification,
+        ReportDelivery,
+        TemplateRenderer,
+        EmailTemplate,
+    )
+    _has_email = True
+except ImportError:
+    _has_email = False
 
 __all__ = [
     # Shared base
@@ -89,19 +89,4 @@ __all__ = [
     "AllowlistEntry",
     "AllowlistStore",
     "InMemoryAllowlistStore",
-    # Email adapter
-    "EmailAdapter",
-    "EmailAdapterError",
-    "EmailConfig",
-    "EmailProvider",
-    "IMAPConfig",
-    "SMTPConfig",
-    "EmailParser",
-    "ParsedEmail",
-    "EmailAttachment",
-    "NotificationManager",
-    "GrantDeadlineNotification",
-    "ReportDelivery",
-    "TemplateRenderer",
-    "EmailTemplate",
 ]

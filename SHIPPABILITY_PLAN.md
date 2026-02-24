@@ -104,7 +104,7 @@ Current adapter returns 404 on every query. ICIJ is keyless/free — should just
 - emet/api/ (server startup)
 - tests/test_api_integration.py
 
-### 2.3 ⬜ Fix test mock fidelity
+### 2.3 ✅ Fix test mock fidelity (DONE)
 **Problem:** Mocks return wrong types (list vs FederatedResult), use wrong kwargs.
 Tests pass but don't catch real bugs. A technical evaluator will notice.
 
@@ -122,12 +122,12 @@ Tests pass but don't catch real bugs. A technical evaluator will notice.
 
 ## Tier 3: Professional Polish
 
-### 3.1 ⬜ Complete .env.example
+### 3.1 ✅ Complete .env.example (DONE)
 **Problem:** Missing Etherscan, GLEIF, GDELT, SpiderFoot, DocumentCloud entries.
 
 **Fix:** Add all env vars with descriptions. Group by category.
 
-### 3.2 ⬜ Quarantine dead code
+### 3.2 ✅ Quarantine dead code (DONE)
 **Problem:** 13K lines never imported. Makes codebase look unfocused.
 
 **Fix approach:**
@@ -136,7 +136,7 @@ Tests pass but don't catch real bugs. A technical evaluator will notice.
 - Dead modules: discord adapter, email adapter, old skills, BDI,
   plugins system, multitenancy, EFE tuning
 
-### 3.3 ⬜ CLI entry point reinstall
+### 3.3 ✅ CLI entry point reinstall (DONE)
 **Problem:** `emet` command not found after pip install -e .
 
 **Fix:** Verify pyproject.toml entry points, document reinstall step.
