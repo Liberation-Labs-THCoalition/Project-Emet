@@ -10,6 +10,8 @@ import json
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
+from emet.ftm.external.federation import FederatedResult
+
 from emet.mcp.server import (
     EmetMCPServer,
     _jsonrpc_response,
@@ -158,13 +160,17 @@ class TestToolExecutor:
     @pytest.mark.asyncio
     async def test_search_entities_dispatches(self):
         """Test that search_entities calls FederatedSearch."""
-        mock_results = [
+        mock_entities = [
             {"id": "e1", "schema": "Person", "properties": {"name": ["Test"]}},
         ]
+        mock_federated = FederatedResult(
+            query="Test Person", entity_type="Any", entities=mock_entities,
+            source_stats={}, errors={}, cache_hits=0, total_time_ms=0, queried_at="",
+        )
         with patch(
             "emet.ftm.external.federation.FederatedSearch.search_entity",
             new_callable=AsyncMock,
-            return_value=mock_results,
+            return_value=mock_federated,
         ):
             result = await self.executor.execute(
                 "search_entities", {"query": "Test Person"}
@@ -180,7 +186,10 @@ class TestToolExecutor:
         with patch(
             "emet.ftm.external.federation.FederatedSearch.search_entity",
             new_callable=AsyncMock,
-            return_value=[],
+            return_value=FederatedResult(
+                query="Test", entity_type="", entities=[],
+                source_stats={}, errors={}, cache_hits=0, total_time_ms=0, queried_at="",
+            ),
         ) as mock_search:
             await self.executor.execute(
                 "search_entities",
@@ -413,13 +422,15 @@ class TestMCPServer:
     @pytest.mark.asyncio
     async def test_tools_call(self):
         """Test tool call via MCP protocol."""
-        mock_results = [
-            {"id": "e1", "schema": "Person", "properties": {"name": ["Alice"]}},
-        ]
+        mock_federated = FederatedResult(
+            query="Alice", entity_type="Any",
+            entities=[{"id": "e1", "schema": "Person", "properties": {"name": ["Alice"]}}],
+            source_stats={}, errors={}, cache_hits=0, total_time_ms=0, queried_at="",
+        )
         with patch(
             "emet.ftm.external.federation.FederatedSearch.search_entity",
             new_callable=AsyncMock,
-            return_value=mock_results,
+            return_value=mock_federated,
         ):
             msg = {
                 "jsonrpc": "2.0",
@@ -438,13 +449,15 @@ class TestMCPServer:
     @pytest.mark.asyncio
     async def test_tools_call_updates_session(self):
         """Tool calls should update investigation session state."""
-        mock_results = [
-            {"id": "e1", "schema": "Person", "properties": {"name": ["Bob"]}},
-        ]
+        mock_federated = FederatedResult(
+            query="Bob", entity_type="Any",
+            entities=[{"id": "e1", "schema": "Person", "properties": {"name": ["Bob"]}}],
+            source_stats={}, errors={}, cache_hits=0, total_time_ms=0, queried_at="",
+        )
         with patch(
             "emet.ftm.external.federation.FederatedSearch.search_entity",
             new_callable=AsyncMock,
-            return_value=mock_results,
+            return_value=mock_federated,
         ):
             msg = {
                 "jsonrpc": "2.0",

@@ -569,12 +569,18 @@ class EmetToolExecutor:
                 "federation", lambda: FederatedSearch(config=FederationConfig())
             )
         et = entity_type if entity_type != "Any" else ""
-        results = await federation.search_entity(query, entity_type=et, limit=limit)
+        federated_result = await federation.search_entity(
+            query, entity_type=et, limit_per_source=limit,
+        )
+        entities = federated_result.entities[:limit]
         return {
             "query": query,
             "entity_type": entity_type,
-            "result_count": len(results),
-            "entities": results[:limit],
+            "result_count": len(entities),
+            "entities": entities,
+            "source_stats": federated_result.source_stats,
+            "errors": federated_result.errors,
+            "queried_at": federated_result.queried_at,
         }
 
     async def _osint_recon(
@@ -628,16 +634,17 @@ class EmetToolExecutor:
         from emet.ftm.external.federation import FederatedSearch
 
         federation = self._get_or_create("federation_default", FederatedSearch)
-        results = await federation.search_entity(
-            entity_name, entity_type="Company", limit=10
+        federated_result = await federation.search_entity(
+            entity_name, entity_type="Company", limit_per_source=10,
         )
+        entities = federated_result.entities[:10]
 
         return {
             "target": entity_name,
             "max_depth": max_depth,
             "include_officers": include_officers,
-            "entities_found": len(results),
-            "entities": results[:10],
+            "entities_found": len(entities),
+            "entities": entities,
         }
 
     async def _screen_sanctions(
