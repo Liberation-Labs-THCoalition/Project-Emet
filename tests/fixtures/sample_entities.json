@@ -1,0 +1,108 @@
+{
+  "_description": "Fixture entities for graph algorithm and pipeline tests",
+  "shell_company_network": {
+    "entities": [
+      {
+        "id": "person-1",
+        "schema": "Person",
+        "properties": {"name": ["Elena Kozlova"], "nationality": ["RU"]}
+      },
+      {
+        "id": "company-a",
+        "schema": "Company",
+        "properties": {"name": ["Sunrise Holdings Ltd"], "jurisdiction": ["VGB"]}
+      },
+      {
+        "id": "company-b",
+        "schema": "Company",
+        "properties": {"name": ["Golden Gate Trading SA"], "jurisdiction": ["PA"]}
+      },
+      {
+        "id": "company-c",
+        "schema": "Company",
+        "properties": {"name": ["Pacific Ventures Ltd"], "jurisdiction": ["VGB"]}
+      },
+      {
+        "id": "company-d",
+        "schema": "Company",
+        "properties": {"name": ["Northern Star GmbH"], "jurisdiction": ["DE"]}
+      }
+    ],
+    "relationships": [
+      {
+        "id": "dir-1",
+        "schema": "Directorship",
+        "properties": {
+          "director": ["person-1"],
+          "organization": ["company-a"],
+          "role": ["Director"]
+        }
+      },
+      {
+        "id": "own-1",
+        "schema": "Ownership",
+        "properties": {
+          "owner": ["company-a"],
+          "asset": ["company-b"],
+          "percentage": ["100"]
+        }
+      },
+      {
+        "id": "own-2",
+        "schema": "Ownership",
+        "properties": {
+          "owner": ["company-b"],
+          "asset": ["company-c"],
+          "percentage": ["75"]
+        }
+      },
+      {
+        "id": "own-3",
+        "schema": "Ownership",
+        "properties": {
+          "owner": ["company-c"],
+          "asset": ["company-a"],
+          "percentage": ["51"],
+          "_note": "Circular ownership back to company-a"
+        }
+      },
+      {
+        "id": "own-4",
+        "schema": "Ownership",
+        "properties": {
+          "owner": ["company-a"],
+          "asset": ["company-d"],
+          "percentage": ["30"]
+        }
+      }
+    ]
+  },
+  "hub_and_spoke": {
+    "_description": "Person connected to 5 companies — high betweenness broker",
+    "entities": [
+      {"id": "hub-person", "schema": "Person", "properties": {"name": ["John Broker"]}},
+      {"id": "spoke-1", "schema": "Company", "properties": {"name": ["Alpha Corp"]}},
+      {"id": "spoke-2", "schema": "Company", "properties": {"name": ["Beta Ltd"]}},
+      {"id": "spoke-3", "schema": "Company", "properties": {"name": ["Gamma SA"]}},
+      {"id": "spoke-4", "schema": "Company", "properties": {"name": ["Delta GmbH"]}},
+      {"id": "spoke-5", "schema": "Company", "properties": {"name": ["Epsilon NV"]}}
+    ],
+    "relationships": [
+      {"id": "d1", "schema": "Directorship", "properties": {"director": ["hub-person"], "organization": ["spoke-1"]}},
+      {"id": "d2", "schema": "Directorship", "properties": {"director": ["hub-person"], "organization": ["spoke-2"]}},
+      {"id": "d3", "schema": "Directorship", "properties": {"director": ["hub-person"], "organization": ["spoke-3"]}},
+      {"id": "d4", "schema": "Directorship", "properties": {"director": ["hub-person"], "organization": ["spoke-4"]}},
+      {"id": "d5", "schema": "Directorship", "properties": {"director": ["hub-person"], "organization": ["spoke-5"]}}
+    ]
+  },
+  "clean_company": {
+    "_description": "Simple legitimate company — should score low on shell detection",
+    "entities": [
+      {"id": "legit-person", "schema": "Person", "properties": {"name": ["Jane CEO"], "nationality": ["GB"]}},
+      {"id": "legit-company", "schema": "Company", "properties": {"name": ["Acme Widgets Ltd"], "jurisdiction": ["gb"], "status": ["Active"]}}
+    ],
+    "relationships": [
+      {"id": "legit-dir", "schema": "Directorship", "properties": {"director": ["legit-person"], "organization": ["legit-company"], "role": ["CEO"]}}
+    ]
+  }
+}

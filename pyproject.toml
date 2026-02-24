@@ -108,3 +108,34 @@ warn_unused_configs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# ---------------------------------------------------------------------------
+# Coverage configuration
+# ---------------------------------------------------------------------------
+# Exclude modules that are either deprecated (skills/), not yet wired
+# (workflows/), deferred to future sprints, or not MVP (email/discord
+# adapters).  This focuses coverage metrics on the active codebase.
+
+[tool.coverage.run]
+source = ["emet"]
+omit = [
+    "emet/skills/*",
+    "emet/workflows/*",
+    "emet/adapters/email/*",
+    "emet/adapters/discord/*",
+    "emet/ftm/external/augmentation.py",
+    "emet/ftm/external/document_sources.py",
+    "emet/ftm/external/entity_resolution.py",
+    "emet/ftm/external/semantic_search.py",
+    "emet/ftm/external/spiderfoot.py",
+    "emet/ftm/external/transcription.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+]
+show_missing = true
