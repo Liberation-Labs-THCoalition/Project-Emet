@@ -133,7 +133,7 @@ class Session:
     def finding_count(self) -> int:
         return len(self.findings)
 
-    def context_for_llm(self, max_chars: int = 4000) -> str:
+    def context_for_llm(self, max_chars: int = 4000, max_turns: int = 15) -> str:
         """Build context string for LLM decision-making.
 
         Summarizes the investigation state so the LLM can decide
@@ -141,10 +141,25 @@ class Session:
         """
         parts = [
             f"INVESTIGATION GOAL: {self.goal}",
-            f"TURN: {self.turn_count}",
+            f"TURN: {self.turn_count} of {max_turns}",
             f"ENTITIES FOUND: {self.entity_count}",
             f"FINDINGS: {self.finding_count}",
         ]
+
+        # Tool call history (so LLM avoids repeats)
+        if self.tool_history:
+            parts.append("\nTOOL HISTORY (already called):")
+            for t in self.tool_history[-8:]:
+                tool = t.get("tool", "?")
+                args = t.get("args", {})
+                # Show key args compactly
+                arg_str = ", ".join(
+                    f"{k}={v!r}" for k, v in args.items()
+                    if k not in ("entities", "params") and v
+                )
+                had_error = "error" in t.get("result", {})
+                status = " [FAILED]" if had_error else ""
+                parts.append(f"  - {tool}({arg_str}){status}")
 
         # Recent findings
         if self.findings:
@@ -178,6 +193,10 @@ class Session:
 
     def summary(self) -> dict[str, Any]:
         """Machine-readable investigation summary."""
+        # Count LLM vs heuristic decisions from reasoning trace
+        llm_turns = sum(1 for r in self.reasoning_trace if "[llm]" in r.lower())
+        heuristic_turns = sum(1 for r in self.reasoning_trace if "[heuristic]" in r.lower())
+
         return {
             "session_id": self.id,
             "goal": self.goal,
@@ -190,6 +209,8 @@ class Session:
             "tools_used": len(self.tool_history),
             "unique_tools": list({t["tool"] for t in self.tool_history}),
             "has_report": self.report is not None,
+            "decisions_llm": llm_turns,
+            "decisions_heuristic": heuristic_turns,
         }
 
 

@@ -172,8 +172,9 @@ class InvestigationAgent:
                 session.record_reasoning("Concluding investigation.")
                 break
 
+            source = action.get("_decision_source", "?")
             session.record_reasoning(
-                f"Turn {session.turn_count}: {action['reasoning']}"
+                f"Turn {session.turn_count} [{source}]: {action['reasoning']}"
             )
 
             # --- Safety: pre-check ---
@@ -322,14 +323,61 @@ class InvestigationAgent:
         """Decide what to do next.
 
         Uses LLM if available, falls back to lead-following heuristic.
+        Rejects duplicate tool calls (same tool + same key args).
         """
         # Try LLM decision
         action = await self._llm_decide(session)
-        if action:
+        if action and not self._is_duplicate(session, action):
+            action["_decision_source"] = "llm"
             return action
+        elif action:
+            session.record_reasoning(
+                f"LLM suggested duplicate call: {action['tool']}. Falling back."
+            )
 
         # Heuristic fallback: follow highest-priority open lead
-        return self._heuristic_decide(session)
+        if self._config.llm_provider != "stub":
+            session.record_reasoning(
+                "LLM decision unavailable — falling back to heuristic lead-following"
+            )
+        action = self._heuristic_decide(session)
+        if self._is_duplicate(session, action):
+            session.record_reasoning(
+                f"Heuristic also duplicate: {action['tool']}. Concluding."
+            )
+            return {"tool": "conclude", "args": {}, "reasoning": "All actions duplicate previous calls"}
+        action["_decision_source"] = "heuristic"
+        return action
+
+    @staticmethod
+    def _is_duplicate(session: "Session", action: dict[str, Any]) -> bool:
+        """Check if this tool call duplicates a previous one."""
+        tool = action.get("tool", "")
+        if tool in ("conclude", "generate_report"):
+            return False  # Always allow terminal actions
+
+        args = action.get("args", {})
+        # Build a comparable key from tool + significant args
+        key_args = {
+            k: v for k, v in sorted(args.items())
+            if k not in ("entities", "params", "format", "include_graph",
+                         "include_timeline", "entity_ids")
+            and v  # skip empty/falsy
+        }
+        sig = (tool, tuple(key_args.items()))
+
+        for prev in session.tool_history:
+            prev_args = prev.get("args", {})
+            prev_key = {
+                k: v for k, v in sorted(prev_args.items())
+                if k not in ("entities", "params", "format", "include_graph",
+                             "include_timeline", "entity_ids")
+                and v
+            }
+            prev_sig = (prev.get("tool", ""), tuple(prev_key.items()))
+            if sig == prev_sig:
+                return True
+        return False
 
     def _get_llm_client(self) -> Any:
         """Get or create the cached LLM client.
@@ -367,7 +415,7 @@ class InvestigationAgent:
         if client is None:
             return None
 
-        context = session.context_for_llm()
+        context = session.context_for_llm(max_turns=self._config.max_turns)
         tools_desc = "\n".join(
             f"  - {name}: {info['description']}"
             f"\n    Parameters: {', '.join(info['params'])}"
