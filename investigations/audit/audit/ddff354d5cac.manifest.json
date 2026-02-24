@@ -1,0 +1,12 @@
+{
+  "session_id": "ddff354d5cac",
+  "path": "investigations/audit/audit/ddff354d5cac.jsonl.gz",
+  "sha256": "a0730d81980a14e9ae15ae890bfefb3bde29172c1ea202acb94a21adaefc9120",
+  "event_count": 20,
+  "compressed_bytes": 1151,
+  "uncompressed_bytes": 5223,
+  "compression_ratio": "4.5x",
+  "started_at": "2026-02-24T20:06:07.698385+00:00",
+  "closed_at": "2026-02-24T20:06:07.699391+00:00",
+  "goal": "shell companies"
+}

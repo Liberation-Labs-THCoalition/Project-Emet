@@ -1,0 +1,12 @@
+{
+  "session_id": "9de3bcf614dc",
+  "path": "investigations/audit/audit/9de3bcf614dc.jsonl.gz",
+  "sha256": "3029d8cb11194057b5acf358b6b3dd93fa091a7ef6e92167bccd2e065fdaa9f3",
+  "event_count": 21,
+  "compressed_bytes": 3141,
+  "uncompressed_bytes": 23925,
+  "compression_ratio": "7.6x",
+  "started_at": "2026-02-24T20:07:19.621015+00:00",
+  "closed_at": "2026-02-24T20:07:36.319164+00:00",
+  "goal": "Persistence test target"
+}

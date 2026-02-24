@@ -1,0 +1,12 @@
+{
+  "session_id": "08576bc080f3",
+  "path": "investigations/audit/audit/08576bc080f3.jsonl.gz",
+  "sha256": "a53fce4f467562ac85643b61cae848990ec72624542755b56c53a470e2de50f3",
+  "event_count": 22,
+  "compressed_bytes": 1305,
+  "uncompressed_bytes": 6048,
+  "compression_ratio": "4.6x",
+  "started_at": "2026-02-24T20:06:07.692408+00:00",
+  "closed_at": "2026-02-24T20:06:07.693961+00:00",
+  "goal": "Acme Corp corruption"
+}

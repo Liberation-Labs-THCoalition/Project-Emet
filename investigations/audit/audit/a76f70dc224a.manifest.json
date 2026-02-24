@@ -1,0 +1,12 @@
+{
+  "session_id": "a76f70dc224a",
+  "path": "investigations/audit/audit/a76f70dc224a.jsonl.gz",
+  "sha256": "52d52fa11bf8c3acb80bccac4f7a56ba1bda495661788fd8f7992b7a886884ad",
+  "event_count": 21,
+  "compressed_bytes": 2996,
+  "uncompressed_bytes": 24699,
+  "compression_ratio": "8.2x",
+  "started_at": "2026-02-24T20:07:52.825492+00:00",
+  "closed_at": "2026-02-24T20:08:09.459390+00:00",
+  "goal": "Bridge test Acme Corp"
+}

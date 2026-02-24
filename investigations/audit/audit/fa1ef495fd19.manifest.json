@@ -1,0 +1,12 @@
+{
+  "session_id": "fa1ef495fd19",
+  "path": "investigations/audit/audit/fa1ef495fd19.jsonl.gz",
+  "sha256": "f90fa70eade83f8de03dca889e842632d6be1e1f80fbae0a2c64354f01f346c6",
+  "event_count": 20,
+  "compressed_bytes": 2938,
+  "uncompressed_bytes": 23800,
+  "compression_ratio": "8.1x",
+  "started_at": "2026-02-24T20:07:03.216282+00:00",
+  "closed_at": "2026-02-24T20:07:19.604154+00:00",
+  "goal": "Entity search test"
+}

@@ -1,0 +1,12 @@
+{
+  "session_id": "3cd5f3568a91",
+  "path": "investigations/audit/audit/3cd5f3568a91.jsonl.gz",
+  "sha256": "3a158e3658fb594cfc2d2a9aec6f2114107d786d3854407e7dd28de58c287f2e",
+  "event_count": 22,
+  "compressed_bytes": 4430,
+  "uncompressed_bytes": 23805,
+  "compression_ratio": "5.4x",
+  "started_at": "2026-02-24T20:09:00.127299+00:00",
+  "closed_at": "2026-02-24T20:09:17.832287+00:00",
+  "goal": "Test investigation"
+}

@@ -1,0 +1,12 @@
+{
+  "session_id": "87d73d691a41",
+  "path": "investigations/audit/audit/87d73d691a41.jsonl.gz",
+  "sha256": "80aae01afd8d47bfd08f6d1f2ce3fd4e95dcc1b207e102be45d1f5f15f596d84",
+  "event_count": 16,
+  "compressed_bytes": 1002,
+  "uncompressed_bytes": 3988,
+  "compression_ratio": "4.0x",
+  "started_at": "2026-02-24T20:06:07.706835+00:00",
+  "closed_at": "2026-02-24T20:06:07.707544+00:00",
+  "goal": "test"
+}

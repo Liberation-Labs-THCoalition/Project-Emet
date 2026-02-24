@@ -1,0 +1,12 @@
+{
+  "session_id": "161857bf74cf",
+  "path": "investigations/audit/audit/161857bf74cf.jsonl.gz",
+  "sha256": "7d3db07160ed8e52767e4a2cd4016fbb8a82a21750cafcaf5ab7ae5285653b60",
+  "event_count": 20,
+  "compressed_bytes": 2782,
+  "uncompressed_bytes": 22839,
+  "compression_ratio": "8.2x",
+  "started_at": "2026-02-24T20:08:26.274429+00:00",
+  "closed_at": "2026-02-24T20:08:42.595660+00:00",
+  "goal": "Cleanup test"
+}

@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from emet.agent.session import Session, Finding, Lead
@@ -150,6 +151,8 @@ class InvestigationAgent:
         # LLM client — created once, reused across turns
         self._llm_client: Any = None  # Lazy-initialized
         self._cost_tracker: Any = None
+        # Audit archive — forensic record of every tool call, LLM exchange, CoT
+        self._audit: Any = None  # Created per-investigation in investigate()
 
     async def investigate(self, goal: str) -> Session:
         """Run an investigation from a natural-language goal.
@@ -159,6 +162,12 @@ class InvestigationAgent:
         """
         session = Session(goal=goal)
         session.record_reasoning(f"Starting investigation: {goal}")
+
+        # Open audit archive for forensic recording
+        from emet.agent.audit import AuditArchive
+        audit_dir = self._config.memory_dir or "investigations/audit"
+        self._audit = AuditArchive(base_dir=Path(audit_dir) / "audit")
+        self._audit.open(session.id, goal=goal)
 
         # Phase 0: Recall prior intelligence from memory
         if self._config.memory_dir:
@@ -196,6 +205,13 @@ class InvestigationAgent:
                 session.record_reasoning(
                     f"BLOCKED by safety harness: {verdict.reason}"
                 )
+                if self._audit:
+                    self._audit.record_safety(
+                        check_type="pre_check",
+                        tool=action["tool"],
+                        verdict="blocked",
+                        details={"reason": verdict.reason, "args": action.get("args", {})},
+                    )
                 # Mark lead as dead end if it was lead-following
                 lead_id = action.get("lead_id")
                 if lead_id:
@@ -228,7 +244,6 @@ class InvestigationAgent:
         # Auto-save to memory directory for cross-session recall
         if self._config.memory_dir:
             from emet.agent.persistence import save_session
-            from pathlib import Path
             mem_path = Path(self._config.memory_dir) / f"{session.id}.json"
             try:
                 save_session(session, mem_path)
@@ -238,6 +253,43 @@ class InvestigationAgent:
 
         # Attach safety audit to session
         session._safety_audit = self._harness.audit_summary()
+
+        # Close audit archive — compress, hash, write to disk
+        if self._audit:
+            try:
+                # Record all reasoning steps into the archive
+                for thought in session.reasoning_trace:
+                    self._audit.record_reasoning(thought)
+                # Record all findings
+                for finding in session.findings:
+                    self._audit.record_event("finding", {
+                        "id": finding.id,
+                        "source": finding.source,
+                        "summary": finding.summary,
+                        "confidence": finding.confidence,
+                        "entity_count": len(finding.entities),
+                        "entities": finding.entities,
+                    })
+                # Record all leads
+                for lead in session.leads:
+                    self._audit.record_event("lead", {
+                        "id": lead.id,
+                        "description": lead.description,
+                        "priority": lead.priority,
+                        "tool": lead.tool,
+                        "query": lead.query,
+                        "status": lead.status,
+                    })
+                manifest = self._audit.close(final_summary=session.summary())
+                session._audit_manifest = {
+                    "path": manifest.path,
+                    "sha256": manifest.sha256,
+                    "event_count": manifest.event_count,
+                    "compressed_bytes": manifest.compressed_bytes,
+                    "uncompressed_bytes": manifest.uncompressed_bytes,
+                }
+            except Exception as exc:
+                logger.debug("Audit archive close failed: %s", exc)
 
         return session
 
@@ -256,6 +308,15 @@ class InvestigationAgent:
                 timeout=self._config.tool_timeout_seconds,
             )
             session.record_tool_use("search_entities", {"query": goal}, result)
+
+            # Audit: capture initial search with full result
+            if self._audit:
+                self._audit.record_tool_call(
+                    tool="search_entities",
+                    args={"query": goal, "entity_type": "Any", "limit": 20},
+                    result=result,
+                    decision_source="initial_phase",
+                )
 
             entities = result.get("entities", [])
 
@@ -326,6 +387,15 @@ class InvestigationAgent:
                     timeout=self._config.tool_timeout_seconds,
                 )
                 session.record_tool_use("monitor_entity", {"entity_name": goal}, result)
+
+                # Audit: capture news monitoring with full result
+                if self._audit:
+                    self._audit.record_tool_call(
+                        tool="monitor_entity",
+                        args={"entity_name": goal, "timespan": "7d"},
+                        result=result,
+                        decision_source="initial_phase",
+                    )
 
                 articles = result.get("article_count", 0)
                 if articles:
@@ -499,10 +569,28 @@ Rules:
                     action["tool"],
                     action.get("reasoning", "")[:80],
                 )
+
+                # Audit: record full LLM exchange
+                if self._audit:
+                    self._audit.record_llm_exchange(
+                        system_prompt=system,
+                        user_prompt=prompt,
+                        raw_response=response.text,
+                        parsed_action=action,
+                        model=getattr(client, "model", self._config.llm_provider),
+                    )
+
                 return action
 
         except Exception as exc:
             logger.debug("LLM decision failed: %s", exc)
+            # Audit: record failed LLM exchange
+            if self._audit:
+                self._audit.record_event("llm_error", {
+                    "error": str(exc),
+                    "system_prompt": system,
+                    "user_prompt": prompt,
+                })
 
         return None
 
@@ -583,34 +671,60 @@ Rules:
         session: Session,
         action: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a tool call with safety observation (audit-only)."""
+        """Execute a tool call with safety observation and audit recording."""
         tool = action["tool"]
         args = action.get("args", {})
+        import time
+        t0 = time.monotonic()
 
         try:
             result = await asyncio.wait_for(
                 self._executor.execute_raw(tool, args),
                 timeout=self._config.tool_timeout_seconds,
             )
+            duration_ms = (time.monotonic() - t0) * 1000
 
             # Safety: report success to circuit breaker
             self._harness.report_tool_success(tool)
 
             # Safety: observe result (audit-only, no scrubbing)
-            # PII and security observations are logged but data is untouched
             result_text = json.dumps(result, default=str)
             if len(result_text) > 10:
                 self._harness.post_check(result_text, tool=tool)
 
             session.record_tool_use(tool, args, result)
+
+            # Audit: record complete tool call with full result
+            if self._audit:
+                self._audit.record_tool_call(
+                    tool=tool,
+                    args=args,
+                    result=result,
+                    duration_ms=duration_ms,
+                    decision_source=action.get("_decision_source", ""),
+                )
+
             return result
         except Exception as exc:
+            duration_ms = (time.monotonic() - t0) * 1000
+
             # Safety: report failure to circuit breaker
             self._harness.report_tool_failure(tool)
 
             error = {"error": str(exc), "tool": tool}
             session.record_tool_use(tool, args, error)
             session.record_reasoning(f"Tool {tool} failed: {exc}")
+
+            # Audit: record failed tool call
+            if self._audit:
+                self._audit.record_tool_call(
+                    tool=tool,
+                    args=args,
+                    result=error,
+                    duration_ms=duration_ms,
+                    decision_source=action.get("_decision_source", ""),
+                )
+
             # Mark lead as dead end if it was a lead-following action
             lead_id = action.get("lead_id")
             if lead_id:
@@ -785,6 +899,15 @@ Rules:
             session.record_tool_use("generate_report", {"title": session.goal}, result)
             session.record_reasoning("Report generated (PII scrubbed for publication).")
 
+            # Audit: capture full report generation
+            if self._audit:
+                self._audit.record_tool_call(
+                    tool="generate_report",
+                    args={"title": session.goal},
+                    result=result,
+                    decision_source="report_phase",
+                )
+
             # Record cost summary if LLM was used
             if self._cost_tracker:
                 cost_info = self._cost_tracker.summary()
@@ -924,7 +1047,6 @@ Be factual. Only report what the findings support. Flag low-confidence items exp
         that the LLM can use for context.
         """
         from emet.agent.persistence import list_sessions, load_session
-        from pathlib import Path
 
         memory_dir = Path(self._config.memory_dir)
         if not memory_dir.exists():

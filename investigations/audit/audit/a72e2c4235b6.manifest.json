@@ -1,0 +1,12 @@
+{
+  "session_id": "a72e2c4235b6",
+  "path": "investigations/audit/audit/a72e2c4235b6.jsonl.gz",
+  "sha256": "df34da03d0faba9a8f2862a28ba2a4c8850cf1cbf8ff2170e2a8bebd48852cb4",
+  "event_count": 22,
+  "compressed_bytes": 4709,
+  "uncompressed_bytes": 24219,
+  "compression_ratio": "5.1x",
+  "started_at": "2026-02-24T20:09:17.897345+00:00",
+  "closed_at": "2026-02-24T20:09:34.291875+00:00",
+  "goal": "Export test"
+}
