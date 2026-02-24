@@ -222,6 +222,65 @@ class TestPublicationMode:
         assert "jane@example.com" not in pub_result.scrubbed_text
         assert pub_result.pii_found > 0
 
+    # --- PII pattern coverage (Tier 2 audit) ---
+
+    def test_scrub_credit_card_valid_luhn(self):
+        """Credit card with valid Luhn check should be redacted."""
+        harness = SafetyHarness.from_defaults()
+        # 4111 1111 1111 1111 is a well-known test number that passes Luhn
+        result = harness.scrub_for_publication("Card: 4111 1111 1111 1111")
+        assert "4111" not in result.scrubbed_text
+        assert result.pii_found > 0
+
+    def test_scrub_credit_card_invalid_luhn(self):
+        """Number that looks like a card but fails Luhn should NOT be redacted."""
+        harness = SafetyHarness.from_defaults()
+        result = harness.scrub_for_publication("Ref: 1234 5678 9012 3456")
+        # 1234567890123456 fails Luhn — should be left alone
+        assert "1234 5678 9012 3456" in result.scrubbed_text
+
+    def test_scrub_ip_address(self):
+        """IP addresses should be redacted."""
+        harness = SafetyHarness.from_defaults()
+        result = harness.scrub_for_publication("Server at 192.168.1.100 was compromised")
+        assert "192.168.1.100" not in result.scrubbed_text
+        assert result.pii_found > 0
+
+    def test_scrub_date_of_birth(self):
+        """DOB patterns should be redacted."""
+        harness = SafetyHarness.from_defaults()
+        result = harness.scrub_for_publication("DOB: 15/03/1985")
+        assert "15/03/1985" not in result.scrubbed_text
+        assert result.pii_found > 0
+
+    def test_entity_names_not_false_positive(self):
+        """Company and jurisdiction names should not trigger PII detection."""
+        harness = SafetyHarness.from_defaults()
+        text = (
+            "Meridian Holdings Ltd incorporated in British Virgin Islands. "
+            "Director: the Right Honourable Sir James Blackwood III. "
+            "Registered agent: Trident Trust Company."
+        )
+        result = harness.scrub_for_publication(text)
+        assert result.pii_found == 0, f"False positive PII detected in: {text}"
+        assert result.scrubbed_text == text
+
+    def test_mixed_pii_types_all_scrubbed(self):
+        """Multiple PII types in one text should all be caught."""
+        harness = SafetyHarness.from_defaults()
+        text = (
+            "Subject john.doe@shell.com, SSN 123-45-6789, "
+            "card 4111 1111 1111 1111, DOB: 01/15/1980, "
+            "IP 10.0.0.1"
+        )
+        result = harness.scrub_for_publication(text)
+        assert "john.doe@shell.com" not in result.scrubbed_text
+        assert "123-45-6789" not in result.scrubbed_text
+        assert "4111" not in result.scrubbed_text
+        assert "01/15/1980" not in result.scrubbed_text
+        assert "10.0.0.1" not in result.scrubbed_text
+        assert result.pii_found >= 5
+
 
 class TestSafetyHarnessCircuitBreaker:
     """Circuit breaker feedback."""
