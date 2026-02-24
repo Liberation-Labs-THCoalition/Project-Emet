@@ -19,7 +19,7 @@ from typing import Any
 VALID_SCHEMAS = {
     "Person", "Company", "Organization", "LegalEntity",
     "Ownership", "Directorship", "UnknownLink",
-    "Document", "Email", "Phone", "Address",
+    "Document", "Mention", "Email", "Phone", "Address",
     "CryptoWallet", "Payment", "Thing",
     "Domain",
 }
@@ -49,10 +49,10 @@ def _validate_ftm_entity(entity: dict[str, Any], source: str) -> list[str]:
     if not isinstance(props, dict):
         errors.append(f"[{source}] Missing or invalid 'properties' (got {type(props).__name__})")
     elif schema not in RELATIONSHIP_SCHEMAS:
-        # Entity schemas must have a name
-        names = props.get("name", [])
+        # Entity schemas must have a name (or title for Document/Mention)
+        names = props.get("name", []) or props.get("title", [])
         if not names or not any(n.strip() for n in names if isinstance(n, str)):
-            errors.append(f"[{source}] No 'name' in properties for {schema}")
+            errors.append(f"[{source}] No 'name' or 'title' in properties for {schema}")
 
     # ID should exist (not strictly required but needed for graph)
     if not entity.get("id"):
