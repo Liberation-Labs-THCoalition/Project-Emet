@@ -299,9 +299,16 @@ class TestNameSimilarity:
     def test_case_insensitive(self) -> None:
         assert _name_similarity("Deutsche Bank", "deutsche bank") == 1.0
 
+    def test_corporate_suffix_stripped(self) -> None:
+        """Corporate suffixes are stripped, so 'Deutsche Bank AG' == 'Deutsche Bank'."""
+        assert _name_similarity("Deutsche Bank AG", "Deutsche Bank") == 1.0
+        assert _name_similarity("Shell Plc", "Shell") == 1.0
+        assert _name_similarity("Apple Inc", "Apple") == 1.0
+
     def test_partial_overlap(self) -> None:
-        sim = _name_similarity("Deutsche Bank AG", "Deutsche Bank")
-        assert 0.5 < sim < 1.0
+        """Genuinely different names with some shared tokens."""
+        sim = _name_similarity("East India Trading", "West India Trading")
+        assert 0.3 < sim < 1.0
 
     def test_no_overlap(self) -> None:
         assert _name_similarity("Apple Inc", "Deutsche Bank AG") == 0.0
@@ -361,6 +368,44 @@ class TestFederatedSearchDeduplication:
 
         deduped = federation._deduplicate(entities)
         assert len(deduped) == 3
+
+    def test_dedup_merges_corporate_suffix_variants(self) -> None:
+        """REGRESSION: 'Deutsche Bank AG' vs 'Deutsche Bank' were not merging."""
+        federation = FederatedSearch(FederationConfig(
+            enable_opensanctions=False,
+            enable_opencorporates=False,
+            enable_icij=False,
+            enable_gleif=False,
+        ))
+
+        entities = [
+            {"schema": "Company", "properties": {"name": ["Deutsche Bank AG"]}, "_provenance": {"source": "gleif", "confidence": 0.98}},
+            {"schema": "Company", "properties": {"name": ["Deutsche Bank"]}, "_provenance": {"source": "opensanctions", "confidence": 0.90}},
+            {"schema": "Company", "properties": {"name": ["Shell Plc"]}, "_provenance": {"source": "opencorporates", "confidence": 0.95}},
+            {"schema": "Company", "properties": {"name": ["Shell"]}, "_provenance": {"source": "icij", "confidence": 0.85}},
+        ]
+
+        deduped = federation._deduplicate(entities)
+        assert len(deduped) == 2, f"Expected 2 after dedup, got {len(deduped)}: {[e['properties']['name'] for e in deduped]}"
+
+    def test_dedup_does_not_false_merge_different_companies(self) -> None:
+        """Companies with overlapping tokens but different names stay separate."""
+        federation = FederatedSearch(FederationConfig(
+            enable_opensanctions=False,
+            enable_opencorporates=False,
+            enable_icij=False,
+            enable_gleif=False,
+        ))
+
+        entities = [
+            {"schema": "Company", "properties": {"name": ["Goldman Sachs"]}, "_provenance": {"source": "a", "confidence": 1}},
+            {"schema": "Company", "properties": {"name": ["Morgan Stanley"]}, "_provenance": {"source": "b", "confidence": 1}},
+            {"schema": "Person", "properties": {"name": ["John Smith"]}, "_provenance": {"source": "c", "confidence": 1}},
+            {"schema": "Person", "properties": {"name": ["Jane Smith"]}, "_provenance": {"source": "d", "confidence": 1}},
+        ]
+
+        deduped = federation._deduplicate(entities)
+        assert len(deduped) == 4, "Different entities must not be merged"
 
 
 class TestFederatedSearchSourceStatus:

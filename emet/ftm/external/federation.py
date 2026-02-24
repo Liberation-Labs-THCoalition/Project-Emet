@@ -129,9 +129,32 @@ class FederatedResult:
 # ---------------------------------------------------------------------------
 
 
+_CORPORATE_SUFFIXES = {
+    # English
+    "ltd", "limited", "inc", "incorporated", "corp", "corporation",
+    "co", "company", "plc", "llc", "llp", "lp",
+    # European
+    "ag", "sa", "gmbh", "nv", "bv", "se", "srl", "sarl", "oy",
+    "ab", "as", "aps",
+    # Other
+    "pty", "pte",
+    # Symbols (after lowering)
+    "&",
+}
+
+
 def _normalize_name(name: str) -> str:
-    """Normalize a name for comparison."""
-    return " ".join(name.lower().strip().split())
+    """Normalize a name for comparison.
+
+    Lowercases, strips whitespace, and removes common corporate
+    suffixes so that "Deutsche Bank AG" and "Deutsche Bank" compare
+    as identical.
+    """
+    tokens = name.lower().strip().split()
+    # Strip trailing corporate suffixes (may be multiple, e.g. "Pty Ltd")
+    while tokens and tokens[-1].rstrip(".") in _CORPORATE_SUFFIXES:
+        tokens.pop()
+    return " ".join(tokens)
 
 
 def _name_similarity(a: str, b: str) -> float:
