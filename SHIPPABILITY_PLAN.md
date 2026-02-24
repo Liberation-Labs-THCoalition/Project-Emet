@@ -93,7 +93,7 @@ Current adapter returns 404 on every query. ICIJ is keyless/free — should just
 - emet/mcp/server.py
 - tests/test_mcp_integration.py (new or existing)
 
-### 2.2 ⬜ Smoke-test HTTP API end-to-end
+### 2.2 ✅ Smoke-test HTTP API end-to-end (DONE)
 **Problem:** `emet serve --http` hasn't been verified to start and accept requests.
 
 **Fix approach:**
