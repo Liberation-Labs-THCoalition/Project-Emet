@@ -653,6 +653,9 @@ Rules:
             if self._config.enable_pii_redaction:
                 result = self._harness.scrub_dict_for_publication(result, "report")
 
+            # Store report on session for programmatic access
+            session.report = result.get("report", "")
+
             session.record_tool_use("generate_report", {"title": session.goal}, result)
             session.record_reasoning("Report generated (PII scrubbed for publication).")
 

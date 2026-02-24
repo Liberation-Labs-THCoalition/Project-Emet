@@ -68,6 +68,7 @@ class Session:
         self.tool_history: list[dict[str, Any]] = []
         self.reasoning_trace: list[str] = []
         self.turn_count: int = 0
+        self.report: str | None = None  # Final report text (set by agent loop)
         # Set by agent loop after investigation
         self._investigation_graph: Any = None
         self._safety_audit: dict[str, Any] = {}
@@ -188,6 +189,7 @@ class Session:
             "leads_total": len(self.leads),
             "tools_used": len(self.tool_history),
             "unique_tools": list({t["tool"] for t in self.tool_history}),
+            "has_report": self.report is not None,
         }
 
 

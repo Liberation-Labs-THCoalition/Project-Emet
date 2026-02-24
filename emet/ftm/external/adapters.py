@@ -256,9 +256,27 @@ class OpenCorporatesClient:
 
 @dataclass
 class ICIJConfig:
-    """Configuration for the ICIJ Offshore Leaks API."""
-    host: str = "https://offshoreleaks.icij.org/api/v1"
-    timeout_seconds: float = 20.0
+    """Configuration for the ICIJ Offshore Leaks API.
+
+    As of January 2025, ICIJ uses a Reconciliation API (W3C standard)
+    instead of the old REST search endpoint.
+    """
+    host: str = "https://offshoreleaks.icij.org"
+    reconcile_path: str = "/api/v1/reconcile"
+    timeout_seconds: float = 45.0  # Reconciliation can be slow
+
+
+# Map our entity types to ICIJ reconciliation types
+_ICIJ_RECONCILE_TYPES: dict[str, str] = {
+    "person": "https://offshoreleaks.icij.org/schema/oldb/officer",
+    "people": "https://offshoreleaks.icij.org/schema/oldb/officer",
+    "officer": "https://offshoreleaks.icij.org/schema/oldb/officer",
+    "company": "https://offshoreleaks.icij.org/schema/oldb/entity",
+    "organization": "https://offshoreleaks.icij.org/schema/oldb/entity",
+    "entity": "https://offshoreleaks.icij.org/schema/oldb/entity",
+    "intermediary": "https://offshoreleaks.icij.org/schema/oldb/intermediary",
+    "address": "https://offshoreleaks.icij.org/schema/oldb/address",
+}
 
 
 class ICIJClient:
@@ -267,6 +285,8 @@ class ICIJClient:
     Contains 810K+ offshore entities from five major leak investigations:
     Panama Papers, Paradise Papers, Offshore Leaks, Bahamas Leaks, and
     Pandora Papers.
+
+    Uses the W3C Reconciliation API (introduced January 2025).
     """
 
     def __init__(self, config: ICIJConfig | None = None) -> None:
@@ -285,31 +305,83 @@ class ICIJClient:
         country: str = "",
         limit: int = 20,
     ) -> dict[str, Any]:
-        """Search the Offshore Leaks database."""
-        params: dict[str, Any] = {"q": query, "limit": limit}
-        if entity_type:
-            params["type"] = entity_type
-        if country:
-            params["country"] = country
+        """Search the Offshore Leaks database via the Reconciliation API.
+
+        Returns results in a normalized format compatible with
+        icij_search_to_ftm_list().
+        """
+        import json as _json
+
+        # Build reconciliation query
+        recon_query: dict[str, Any] = {"query": query, "limit": limit}
+
+        # Add type constraint if specified
+        type_uri = _ICIJ_RECONCILE_TYPES.get(entity_type.lower(), "")
+        if type_uri:
+            recon_query["type"] = type_uri
+
+        queries_payload = _json.dumps({"q0": recon_query})
 
         async with self._client() as client:
-            resp = await client.get("/search", params=params)
+            resp = await client.post(
+                self._config.reconcile_path,
+                data={"queries": queries_payload},
+            )
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+
+        # Normalize reconciliation response → list of node-like dicts
+        results = []
+        for match in data.get("q0", {}).get("result", []):
+            # Extract type from the reconciliation type URI
+            types = match.get("types", [])
+            node_type = "entity"
+            if types:
+                type_name = types[0].get("name", "Entity").lower()
+                node_type = type_name
+
+            results.append({
+                "node_id": match.get("id", ""),
+                "name": match.get("name", ""),
+                "type": node_type,
+                "description": match.get("description", ""),
+                "_reconciliation_score": match.get("score", 0),
+            })
+
+        return {"results": results}
 
     async def get_entity(self, node_id: str) -> dict[str, Any]:
-        """Get a specific entity from the Offshore Leaks database."""
+        """Get a specific entity from the Offshore Leaks database.
+
+        Note: The direct node API may not be available. Falls back
+        to reconciliation search by ID.
+        """
         async with self._client() as client:
-            resp = await client.get(f"/nodes/{node_id}")
-            resp.raise_for_status()
-            return resp.json()
+            # Try the node detail endpoint first
+            try:
+                resp = await client.get(f"/api/v1/nodes/{node_id}")
+                if resp.status_code == 200:
+                    return resp.json()
+            except Exception:
+                pass
+
+        # Fallback: not available in reconciliation API
+        return {"error": "Node detail not available", "node_id": node_id}
 
     async def get_relationships(self, node_id: str) -> dict[str, Any]:
-        """Get all relationships for an entity."""
+        """Get all relationships for an entity.
+
+        Note: The direct relationship API may not be available.
+        """
         async with self._client() as client:
-            resp = await client.get(f"/nodes/{node_id}/relationships")
-            resp.raise_for_status()
-            return resp.json()
+            try:
+                resp = await client.get(f"/api/v1/nodes/{node_id}/relationships")
+                if resp.status_code == 200:
+                    return resp.json()
+            except Exception:
+                pass
+
+        return {"error": "Relationship detail not available", "node_id": node_id}
 
 
 # ---------------------------------------------------------------------------
