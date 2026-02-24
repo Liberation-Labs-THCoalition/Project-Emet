@@ -619,6 +619,8 @@ class EmetToolExecutor:
         entity_ids: list[str] | None = None,
         entities: list[dict[str, Any]] | None = None,
         params: dict[str, Any] | None = None,
+        # LLM-friendly alias (AGENT_TOOLS advertises this)
+        analysis_type: str = "",
     ) -> dict[str, Any]:
         """Graph analytics on entity network.
 
@@ -626,6 +628,10 @@ class EmetToolExecutor:
         key_players, structural_anomalies, full (runs all).
         """
         from emet.graph.engine import GraphEngine
+
+        # Normalize LLM alias
+        if analysis_type and algorithm == "full":
+            algorithm = analysis_type
 
         engine = self._get_or_create("graph_engine", GraphEngine)
 
@@ -699,11 +705,20 @@ class EmetToolExecutor:
 
     async def _screen_sanctions(
         self,
-        entities: list[dict[str, Any]],
+        entities: list[dict[str, Any]] | None = None,
         threshold: float = 0.7,
+        # LLM-friendly aliases (AGENT_TOOLS advertises these)
+        entity_name: str = "",
+        entity_type: str = "Person",
     ) -> dict[str, Any]:
         """Sanctions screening via OpenSanctions."""
         from emet.ftm.external.adapters import YenteClient
+
+        # Normalize: accept either entities list or entity_name string
+        if entities is None:
+            entities = []
+        if entity_name and not entities:
+            entities = [{"name": entity_name, "schema": entity_type}]
 
         client = self._get_or_create("yente", YenteClient)
 
