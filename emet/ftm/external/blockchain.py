@@ -77,7 +77,8 @@ class EtherscanConfig:
     Get a free API key at https://etherscan.io/apis
     """
     api_key: str = ""
-    host: str = "https://api.etherscan.io/api"
+    host: str = "https://api.etherscan.io/v2/api"
+    chain_id: int = 1  # 1 = Ethereum mainnet
     timeout_seconds: float = 15.0
     rate_limit_per_sec: float = 5.0
 
@@ -99,6 +100,7 @@ class EtherscanClient:
 
         if self._config.api_key:
             params["apikey"] = self._config.api_key
+        params["chainid"] = self._config.chain_id
 
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             resp = await client.get(self._config.host, params=params)
@@ -107,7 +109,11 @@ class EtherscanClient:
 
             # Etherscan returns status "0" for errors
             if data.get("status") == "0" and data.get("message") != "No transactions found":
-                logger.warning("Etherscan error: %s", data.get("result", data.get("message")))
+                error_msg = data.get("result", data.get("message", "Unknown error"))
+                logger.warning("Etherscan error: %s", error_msg)
+                # Return structured error instead of letting callers crash
+                # on non-numeric/unexpected result values
+                data["_error"] = str(error_msg)
 
             return data
 
@@ -123,7 +129,19 @@ class EtherscanClient:
             "tag": "latest",
         })
 
-        balance_wei = int(data.get("result", "0"))
+        if data.get("_error"):
+            return {
+                "address": address,
+                "balance_wei": 0,
+                "balance_eth": 0.0,
+                "chain": "ethereum",
+                "error": data["_error"],
+            }
+
+        try:
+            balance_wei = int(data.get("result", "0"))
+        except (ValueError, TypeError):
+            balance_wei = 0
         balance_eth = balance_wei / 1e18
 
         return {

@@ -249,12 +249,11 @@ class ChangeDetector:
         try:
             from emet.ftm.external.federation import FederatedSearch
             federation = FederatedSearch()
-            results = await federation.search_entity(
-                name=query,
-                entity_type=mq.entity_type,
-                jurisdictions=mq.jurisdictions,
+            federated_result = await federation.search_entity(
+                query,
+                entity_type=mq.entity_type or "",
             )
-            current = results.get("entities", [])
+            current = federated_result.entities
         except Exception as e:
             logger.error("Federated search failed for monitoring query %s: %s", query, e)
             return []

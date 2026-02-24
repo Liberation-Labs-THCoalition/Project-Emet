@@ -365,7 +365,7 @@ class FederatedSearch:
             return cached
 
         # Companies House has both company and officer search
-        result = await client.search_companies_ftm(query, limit=limit)
+        result = await client.search_companies_ftm(query, items_per_page=limit)
         entities = result.get("entities", [])
 
         self._cache.set(cache_key, entities)

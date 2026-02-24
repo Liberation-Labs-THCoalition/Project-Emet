@@ -592,35 +592,84 @@ class EmetToolExecutor:
         """SpiderFoot OSINT reconnaissance."""
         from emet.ftm.external.spiderfoot import SpiderFootClient, SpiderFootConfig
 
-        client = self._get_or_create(
-            "spiderfoot", lambda: SpiderFootClient(SpiderFootConfig())
-        )
-        scan_result = await client.scan(
-            target=target,
-            scan_type=scan_type,
-            modules=modules,
-        )
-        return scan_result
+        try:
+            client = self._get_or_create(
+                "spiderfoot", lambda: SpiderFootClient(SpiderFootConfig())
+            )
+            scan_result = await client.scan(
+                target=target,
+                scan_type=scan_type,
+                modules=modules,
+            )
+            return scan_result
+        except (ConnectionError, OSError, Exception) as exc:
+            if "connect" in type(exc).__name__.lower() or "connection" in str(exc).lower():
+                return {
+                    "target": target,
+                    "scan_type": scan_type,
+                    "error": f"SpiderFoot server unavailable: {exc}",
+                    "hint": "Ensure SpiderFoot is running and SPIDERFOOT_URL is configured.",
+                }
+            raise
 
     async def _analyze_graph(
         self,
-        algorithm: str,
+        algorithm: str = "full",
         entity_ids: list[str] | None = None,
+        entities: list[dict[str, Any]] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Graph analytics on entity network."""
+        """Graph analytics on entity network.
+
+        Algorithms: community_detection, brokers, circular_ownership,
+        key_players, structural_anomalies, full (runs all).
+        """
         from emet.graph.engine import GraphEngine
 
         engine = self._get_or_create("graph_engine", GraphEngine)
-        if entity_ids:
-            engine.load_entities(entity_ids)
 
+        entity_list = entities or []
+        if not entity_list:
+            return {
+                "algorithm": algorithm,
+                "node_count": 0,
+                "edge_count": 0,
+                "result": {},
+                "error": "No entities provided for graph analysis",
+            }
+
+        graph_result = engine.build_from_entities(entity_list)
+        analysis = graph_result.analysis
         algo_params = params or {}
-        result = engine.run_algorithm(algorithm, **algo_params)
+
+        # Map algorithm name to actual method
+        algo_map = {
+            "community_detection": lambda: [c.__dict__ for c in analysis.find_communities()],
+            "brokers": lambda: [b.__dict__ for b in analysis.find_brokers(**algo_params)],
+            "circular_ownership": lambda: [c.__dict__ for c in analysis.find_circular_ownership(**algo_params)],
+            "key_players": lambda: [k.__dict__ for k in analysis.find_key_players(**algo_params)],
+            "structural_anomalies": lambda: [a.__dict__ for a in analysis.find_structural_anomalies()],
+        }
+
+        if algorithm == "full":
+            result = {}
+            for name, fn in algo_map.items():
+                try:
+                    result[name] = fn()
+                except Exception as exc:
+                    result[name] = {"error": str(exc)}
+        elif algorithm in algo_map:
+            result = algo_map[algorithm]()
+        else:
+            return {
+                "algorithm": algorithm,
+                "error": f"Unknown algorithm '{algorithm}'. Available: {list(algo_map.keys()) + ['full']}",
+            }
+
         return {
             "algorithm": algorithm,
-            "node_count": engine.node_count,
-            "edge_count": engine.edge_count,
+            "node_count": graph_result.node_count,
+            "edge_count": graph_result.edge_count,
             "result": result,
         }
 
@@ -656,16 +705,22 @@ class EmetToolExecutor:
         from emet.ftm.external.adapters import YenteClient
 
         client = self._get_or_create("yente", YenteClient)
-        results = []
+
+        # Convert input entities to FtM-style dicts for the match API
+        ftm_entities = []
         for entity in entities:
-            matches = await client.match(
-                name=entity.get("name", ""),
-                schema=entity.get("schema", "Person"),
-            )
-            for match in matches.get("responses", {}).values():
-                for r in match.get("results", []):
-                    if r.get("score", 0) >= threshold:
-                        results.append(r)
+            ftm_entities.append({
+                "schema": entity.get("schema", "Person"),
+                "properties": {"name": [entity.get("name", "")]},
+            })
+
+        raw_matches = await client.screen_entities(ftm_entities)
+
+        # Filter by threshold
+        results = [
+            m for m in raw_matches
+            if m.get("score", 0) >= threshold
+        ]
 
         return {
             "screened_count": len(entities),
@@ -784,24 +839,35 @@ class EmetToolExecutor:
         self,
         title: str,
         format: str = "markdown",
+        entities: list[dict[str, Any]] | None = None,
         entity_ids: list[str] | None = None,
         include_graph: bool = True,
         include_timeline: bool = True,
     ) -> dict[str, Any]:
         """Generate investigation report."""
-        from emet.export.markdown import MarkdownReporter
+        from emet.export.markdown import MarkdownReport, InvestigationReport
 
-        reporter = self._get_or_create("markdown_reporter", MarkdownReporter)
-        report = reporter.generate(
-            title=title,
-            entity_ids=entity_ids or [],
-            include_graph=include_graph,
-            include_timeline=include_timeline,
-        )
+        reporter = self._get_or_create("markdown_reporter", MarkdownReport)
+
+        report_obj = InvestigationReport(title=title)
+
+        # Populate entities if provided
+        if entities:
+            for entity in entities:
+                props = entity.get("properties", {})
+                report_obj.entities.append({
+                    "id": entity.get("id", ""),
+                    "schema": entity.get("schema", ""),
+                    "name": (props.get("name", [""]) or [""])[0],
+                    "country": (props.get("country", [""]) or [""])[0],
+                    "properties": props,
+                })
+
+        report_text = reporter.generate(report_obj)
         return {
             "title": title,
             "format": format,
-            "report": report,
+            "report": report_text,
         }
 
     async def _ingest_documents(
@@ -814,17 +880,13 @@ class EmetToolExecutor:
         """Document ingestion from Datashare/DocumentCloud."""
 
         if source == "datashare":
-            from emet.ftm.external.document_sources import DatashareClient, DatashareConfig
-            client = self._get_or_create(
-                "datashare", lambda: DatashareClient(DatashareConfig())
-            )
-            docs = await client.search(query=query, project_id=project_id, limit=limit)
+            from emet.ftm.external.document_sources import DatashareClient
+            client = self._get_or_create("datashare", DatashareClient)
+            docs = await client.search(query=query or "*", size=limit)
         elif source == "documentcloud":
-            from emet.ftm.external.document_sources import DocumentCloudClient, DocumentCloudConfig
-            client = self._get_or_create(
-                "documentcloud", lambda: DocumentCloudClient(DocumentCloudConfig())
-            )
-            docs = await client.search(query=query, project_id=project_id, limit=limit)
+            from emet.ftm.external.document_sources import DocumentCloudClient
+            client = self._get_or_create("documentcloud", DocumentCloudClient)
+            docs = await client.search(query=query or "*", per_page=limit)
         else:
             return {"error": f"Unknown source: {source}"}
 
@@ -860,7 +922,7 @@ class EmetToolExecutor:
     async def _run_workflow(
         self,
         workflow_name: str,
-        inputs: dict[str, Any],
+        inputs: dict[str, Any] | None = None,
         dry_run: bool = False,
     ) -> dict[str, Any]:
         """Execute an investigation workflow."""
@@ -883,7 +945,7 @@ class EmetToolExecutor:
             }
 
         engine = WorkflowEngine(tool_executor=self)
-        run = await engine.run(workflow, inputs, dry_run=dry_run)
+        run = await engine.run(workflow, inputs or {}, dry_run=dry_run)
 
         return {
             "run_id": run.run_id,
