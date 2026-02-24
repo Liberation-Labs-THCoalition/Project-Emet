@@ -17,6 +17,7 @@ Design:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -116,6 +117,7 @@ class AgentConfig:
     enable_safety: bool = True     # Enable full safety harness
     enable_pii_redaction: bool = True   # Scrub PII from outputs
     enable_shield: bool = True     # Budget/rate/circuit breaker
+    tool_timeout_seconds: float = 60.0  # Per-tool-call timeout (prevents hangs)
     # Persistence
     persist_path: str = ""         # Auto-save session to this path
     # Visualization
@@ -222,9 +224,12 @@ class InvestigationAgent:
         # Entity search
         session.record_reasoning(f"Initial entity search for: {goal}")
         try:
-            result = await self._executor.execute_raw(
-                "search_entities",
-                {"query": goal, "entity_type": "Any", "limit": 20},
+            result = await asyncio.wait_for(
+                self._executor.execute_raw(
+                    "search_entities",
+                    {"query": goal, "entity_type": "Any", "limit": 20},
+                ),
+                timeout=self._config.tool_timeout_seconds,
             )
             session.record_tool_use("search_entities", {"query": goal}, result)
 
@@ -270,9 +275,12 @@ class InvestigationAgent:
         # News monitoring
         if self._config.auto_news_check:
             try:
-                result = await self._executor.execute_raw(
-                    "monitor_entity",
-                    {"entity_name": goal, "timespan": "7d"},
+                result = await asyncio.wait_for(
+                    self._executor.execute_raw(
+                        "monitor_entity",
+                        {"entity_name": goal, "timespan": "7d"},
+                    ),
+                    timeout=self._config.tool_timeout_seconds,
                 )
                 session.record_tool_use("monitor_entity", {"entity_name": goal}, result)
 
@@ -454,7 +462,10 @@ Rules:
         args = action.get("args", {})
 
         try:
-            result = await self._executor.execute_raw(tool, args)
+            result = await asyncio.wait_for(
+                self._executor.execute_raw(tool, args),
+                timeout=self._config.tool_timeout_seconds,
+            )
 
             # Safety: report success to circuit breaker
             self._harness.report_tool_success(tool)
@@ -626,13 +637,16 @@ Rules:
                     schema = entity.get("schema", "")
                     entity_summaries.append(f"[{schema}] {names[0] if names else eid}")
 
-                result = await self._executor.execute_raw(
-                    "generate_report",
-                    {
-                        "title": f"Investigation: {session.goal}",
-                        "format": "markdown",
-                        "entities": list(session.entities.values())[:50],
-                    },
+                result = await asyncio.wait_for(
+                    self._executor.execute_raw(
+                        "generate_report",
+                        {
+                            "title": f"Investigation: {session.goal}",
+                            "format": "markdown",
+                            "entities": list(session.entities.values())[:50],
+                        },
+                    ),
+                    timeout=self._config.tool_timeout_seconds,
                 )
 
             # Publication boundary: scrub PII from report output

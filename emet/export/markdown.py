@@ -267,14 +267,25 @@ class MarkdownReport:
 
     def _sources_section(self, sources: list[dict[str, str]]) -> str:
         lines = ["## Data Sources\n"]
-        lines.append("| Source | Type | Records |")
-        lines.append("|--------|------|---------|")
+        has_timestamps = any(s.get("queried_at") for s in sources)
+        if has_timestamps:
+            lines.append("| Source | Type | Records | Queried |")
+            lines.append("|--------|------|---------|---------|")
+        else:
+            lines.append("| Source | Type | Records |")
+            lines.append("|--------|------|---------|")
         for source in sources:
-            lines.append(
+            row = (
                 f"| {source.get('name', 'Unknown')} | "
                 f"{source.get('type', '')} | "
                 f"{source.get('records', '—')} |"
             )
+            if has_timestamps:
+                ts = source.get("queried_at", "—")
+                if ts and ts != "—" and len(ts) > 10:
+                    ts = ts[:16].replace("T", " ") + " UTC"
+                row += f" {ts} |"
+            lines.append(row)
         lines.append("")
         return "\n".join(lines)
 

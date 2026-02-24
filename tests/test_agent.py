@@ -489,6 +489,37 @@ class TestInvestigationAgent:
         assert any("failed" in r.lower() for r in session.reasoning_trace)
 
 
+    @pytest.mark.asyncio
+    async def test_tool_timeout_does_not_hang(self):
+        """A hanging tool call should be killed after tool_timeout_seconds."""
+        config = AgentConfig(
+            max_turns=3, auto_news_check=False, auto_sanctions_screen=False,
+            llm_provider="stub", tool_timeout_seconds=0.5,
+        )
+        agent = InvestigationAgent(config=config)
+
+        async def hanging_execute(tool, args):
+            if tool == "search_entities":
+                await asyncio.sleep(10)  # Simulates hung external service
+                return {"entities": []}  # Should never reach here
+            return {}
+
+        agent._executor = MagicMock()
+        agent._executor.execute = hanging_execute
+        agent._executor.execute_raw = hanging_execute
+
+        import time
+        start = time.monotonic()
+        session = await agent.investigate("test timeout")
+        elapsed = time.monotonic() - start
+
+        # Should complete well under 10s (the hang time)
+        assert elapsed < 5.0, f"Investigation took {elapsed:.1f}s — timeout not working"
+        # Error should be recorded
+        assert any("failed" in r.lower() or "timed out" in r.lower()
+                    for r in session.reasoning_trace)
+
+
 class TestConcurrentInvestigations:
     """Verify two simultaneous investigations don't cross-contaminate."""
 

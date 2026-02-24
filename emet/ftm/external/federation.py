@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from emet.ftm.external.adapters import (
@@ -122,6 +123,7 @@ class FederatedResult:
     errors: dict[str, str]  # source → error message
     cache_hits: int
     total_time_ms: float
+    queried_at: str = ""  # ISO 8601 timestamp of when the search was run
 
 
 # ---------------------------------------------------------------------------
@@ -492,6 +494,7 @@ class FederatedSearch:
             errors=errors,
             cache_hits=self._cache.stats["hits"],
             total_time_ms=round(elapsed_ms, 1),
+            queried_at=datetime.now(timezone.utc).isoformat(),
         )
 
         logger.info(
