@@ -12,7 +12,7 @@ The system takes a natural-language investigation goal, reasons autonomously abo
 │                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────┐ │
 │  │  Interfaces                                                      │ │
-│  │  CLI  │  HTTP API (FastAPI)  │  WebSocket  │  MCP  │  Slack/DC  │ │
+│  │  CLI  │  HTTP API (FastAPI)  │  WebSocket  │  MCP               │ │
 │  └──────────────────────┬──────────────────────────────────────────┘ │
 │                         │                                             │
 │  ┌──────────────────────▼──────────────────────────────────────────┐ │
@@ -181,9 +181,9 @@ FastAPI application factory (`create_app()`) with:
 
 Model Context Protocol server for Claude Desktop and other MCP-compatible clients. Exposes all 9 investigation tools plus 3 resource providers. Transport: stdio or SSE.
 
-### Adapter Bridge (`emet/adapters/investigation_bridge.py`)
+### Adapter Bridge (planned: `_future/adapters/`)
 
-Unified bridge connecting Slack, Discord, and webchat adapters to the agent loop. Translates platform-specific messages into investigation goals, streams results back as formatted messages (Slack blocks, Discord embeds, webchat responses).
+Slack, Discord, and webchat adapters are planned but not yet wired into the active codebase. The bridge architecture is designed — platform-specific messages translate into investigation goals, results stream back as formatted messages. Code exists in `_future/adapters/` pending integration.
 
 ---
 
@@ -355,9 +355,9 @@ These are now secondary to the agent loop + MCP tools architecture, but remain a
 |--------|-------|
 | Source files | 179 Python modules |
 | Source lines | ~50,000 |
-| Tests | 2,328 |
+| Tests | 1,811 unit + 44 live |
 | Packages | 23 |
 | Commits | 40 |
 | MCP tools | 9 |
 | API routes | 19 |
-| Adapters | 5 (CLI, HTTP, WebSocket, Slack, Discord) |
+| Interfaces | 4 (CLI, HTTP, WebSocket, MCP) |

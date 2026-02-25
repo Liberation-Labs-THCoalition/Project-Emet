@@ -32,6 +32,9 @@ An LLM reasons about what to do next. The agent searches entity databases, scree
 **Additional platform capabilities:**
 - Federated search across 7 sources with parallel async fan-out, deduplication, rate limiting, and caching
 - Graph analytics engine (NetworkX): 7 investigative algorithms with multi-format export (Gephi, D3, Cytoscape)
+- **Demo mode** — zero-config first-run experience with bundled investigation scenario (19 entities, sanctions hit, graph analysis, full report)
+- **Forensic audit archive** — every tool call, LLM exchange, and reasoning step captured in gzip-compressed, SHA-256 verified JSONL
+- **Cross-session memory** — file-based recall of prior findings across investigations (no database required)
 - Document ingestion from Datashare (ICIJ) and DocumentCloud (MuckRock/IRE)
 - Temporal pattern detection: burst analysis, coincidence detection across entity timelines
 - PDF report generation with navy/gold branding (configurable) and PII scrubbing at publication boundary
@@ -50,6 +53,9 @@ cp .env.example .env
 
 # Run an investigation (stub mode — no API keys needed)
 emet investigate "Trace ownership of Acme Holdings" --llm stub
+
+# Demo mode — bundled scenario with realistic data, no keys needed
+emet investigate "Meridian Holdings offshore network" --llm stub --demo
 
 # With an LLM for autonomous decision-making
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -70,7 +76,7 @@ emet serve --transport stdio
 
 ## Interfaces
 
-Emet is accessible through five interfaces, all backed by the same agent loop:
+Emet is accessible through four interfaces, all backed by the same agent loop:
 
 | Interface | Command / URL | Use Case |
 |-----------|--------------|----------|
@@ -78,7 +84,6 @@ Emet is accessible through five interfaces, all backed by the same agent loop:
 | **HTTP API** | `emet serve --http` | Web integration, dashboards |
 | **WebSocket** | `ws://host/ws/investigations/{id}` | Real-time streaming updates |
 | **MCP** | `emet serve --transport stdio` | Claude Desktop, MCP-compatible clients |
-| **Slack / Discord** | Bot adapters | Team-based investigations in chat |
 
 ### HTTP API
 
@@ -119,7 +124,7 @@ ws.onmessage = (event) => {
 ┌─────────────────────────────────────────────────────────────┐
 │                           EMET                               │
 │                                                               │
-│  Interfaces:  CLI  │  HTTP API  │  WebSocket  │  MCP  │  Chat │
+│  Interfaces:  CLI  │  HTTP API  │  WebSocket  │  MCP          │
 │       ↓            ↓             ↓              ↓         ↓    │
 │  ┌────────────────────────────────────────────────────────┐   │
 │  │  Investigation Bridge (unified adapter → agent loop)   │   │
@@ -219,24 +224,29 @@ No external services required for development — all tools return structured mo
 ## Testing
 
 ```bash
-# Full suite (2,328 tests, ~10 seconds)
-python -m pytest tests/ -q
+# Unit + integration tests (1,811 tests, ~3 minutes)
+python -m pytest tests/ -q --ignore=tests/live
+
+# Live integration tests (requires API keys — see .env.example)
+python -m pytest -m live tests/live/ -v
 
 # Key test modules
-python -m pytest tests/test_agent_loop.py           # Agent loop + session
+python -m pytest tests/test_agent.py                # Agent loop + session
 python -m pytest tests/test_agent_llm_wiring.py     # LLM decision + synthesis
-python -m pytest tests/test_safety_harness.py        # Safety checks + PII
-python -m pytest tests/test_mcp_tools.py             # MCP tool execution
+python -m pytest tests/test_security_pii.py          # PII detection + scrubbing
+python -m pytest tests/test_mcp_server.py            # MCP server + tool dispatch
+python -m pytest tests/test_mock_fidelity.py         # All 12 tools + demo mode
 python -m pytest tests/test_http_api.py              # HTTP API routes
-python -m pytest tests/test_adapters.py              # Slack/Discord/WebSocket
-python -m pytest tests/test_e2e_investigation.py     # End-to-end pipeline
+python -m pytest tests/test_e2e_pipeline.py          # End-to-end pipeline
 python -m pytest tests/test_graph.py                 # Graph analytics
 python -m pytest tests/test_federation.py            # Federated search
 python -m pytest tests/test_export.py                # Export pipeline
+python -m pytest tests/test_pdf_export.py            # PDF report generation
 python -m pytest tests/test_workflows.py             # Predefined workflows
+python -m pytest tests/test_memory_cma_stage1.py     # CMA memory pipeline
 ```
 
-No external services required — all tests use stubs, mocks, and synthetic datasets.
+No external services required for the unit suite — all tests use stubs, mocks, and synthetic datasets. The live suite (44 tests) exercises real APIs and is intended for cluster runs with API keys configured.
 
 ## Project Structure
 
@@ -247,7 +257,8 @@ Project-Emet/
 │   │   ├── loop.py             # InvestigationAgent: LLM decisions, tool execution
 │   │   ├── session.py          # Investigation state: entities, findings, leads
 │   │   ├── safety_harness.py   # Two-mode safety: audit-only vs enforcing
-│   │   └── persistence.py      # Session save/load for resume
+│   │   ├── persistence.py      # Session save/load for resume
+│   │   └── audit.py            # Forensic audit archive (gzip JSONL, SHA-256 verified)
 │   ├── mcp/                    # Model Context Protocol server
 │   │   ├── server.py           # MCP server (stdio/SSE)
 │   │   ├── tools.py            # 12 MCP tools + EmetToolExecutor
@@ -256,11 +267,11 @@ Project-Emet/
 │   │   ├── app.py              # FastAPI factory
 │   │   ├── websocket.py        # WebSocket streaming
 │   │   └── routes/             # REST endpoints (investigations, agent, config, health)
-│   ├── adapters/               # Chat platform integrations
-│   │   ├── investigation_bridge.py  # Unified adapter → agent loop bridge
-│   │   ├── slack/              # Slack bot (OAuth, events, interactions)
-│   │   ├── discord/            # Discord bot (cogs, embeds, permissions)
-│   │   └── webchat/            # Embeddable web widget
+│   ├── export/                 # Investigation output
+│   │   ├── markdown.py         # Markdown report generator
+│   │   ├── pdf.py              # PDF report generator (reportlab, configurable branding)
+│   │   ├── ftm_bundle.py       # FtM JSONL/zip for Aleph re-import
+│   │   └── timeline.py         # Temporal events + pattern detection
 │   ├── cognition/              # LLM abstraction + routing
 │   │   ├── llm_base.py         # LLMClient ABC, LLMResponse dataclass
 │   │   ├── llm_anthropic.py    # Anthropic Claude client
@@ -287,10 +298,6 @@ Project-Emet/
 │   │   ├── ftm_loader.py       # FtM → NetworkX graph conversion
 │   │   ├── exporters.py        # GEXF, GraphML, CSV, D3, Cytoscape
 │   │   └── engine.py           # GraphEngine orchestrator
-│   ├── export/                 # Investigation output
-│   │   ├── markdown.py         # Markdown report generator
-│   │   ├── ftm_bundle.py       # FtM JSONL/zip for Aleph re-import
-│   │   └── timeline.py         # Temporal events + pattern detection
 │   ├── monitoring/             # Change detection + alerts
 │   ├── workflows/              # Predefined investigation workflows
 │   │   ├── schema.py           # Workflow definition schema
@@ -311,7 +318,8 @@ Project-Emet/
 │   ├── multitenancy/           # Per-investigation isolation
 │   ├── config/                 # Settings
 │   └── cli.py                  # CLI entry point
-├── tests/                      # 2,328 tests
+├── tests/                      # 1,811 unit + 44 live integration tests
+│   └── live/                   # Live API tests (require keys, run on cluster)
 ├── docs/                       # USER_GUIDE, COMPETITIVE_ROADMAP, PILOT_PLAN
 ├── VALUES.json                 # Journalism ethics constitution
 ├── ARCHITECTURE.md             # Technical architecture

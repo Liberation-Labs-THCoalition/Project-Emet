@@ -687,7 +687,7 @@ If PII appears in a CLI report or API response, file a bug. The publication boun
 ```bash
 python -m pytest tests/ -q
 ```
-All 2,328 tests should pass with no external services. If failures occur, check that you've installed dev dependencies: `pip install -e ".[dev]"`
+All 1,811 tests should pass with no external services. If failures occur, check that you've installed dev dependencies: `pip install -e ".[dev]"`
 
 ---
 
