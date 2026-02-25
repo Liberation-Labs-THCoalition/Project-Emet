@@ -92,6 +92,24 @@ def main() -> None:
     status_parser.add_argument("--install-cron", action="store_true", help="Install weekly health check cron job")
     status_parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
 
+    # watch
+    watch_parser = subparsers.add_parser("watch", help="Entity watchlist monitoring")
+    watch_sub = watch_parser.add_subparsers(dest="watch_command")
+    watch_add = watch_sub.add_parser("add", help="Add entity to watchlist")
+    watch_add.add_argument("entity_name", help="Entity name to watch")
+    watch_add.add_argument("--type", default="Any", help="Entity type (Person, Company, Any)")
+    watch_add.add_argument("--tag", action="append", default=[], help="Tags for filtering")
+    watch_sub.add_parser("list", help="Show watched entities")
+    watch_run = watch_sub.add_parser("run", help="Check all entities for changes")
+    watch_run.add_argument("--quiet", action="store_true", help="Only output if changes found")
+    watch_run.add_argument("--install-cron", action="store_true", help="Install daily watchlist cron")
+    watch_run.add_argument("--notify", choices=["stdout", "file", "notify"], default="stdout")
+    watch_rm = watch_sub.add_parser("remove", help="Remove entity from watchlist")
+    watch_rm.add_argument("entity_name", help="Entity name to remove")
+    watch_hist = watch_sub.add_parser("history", help="Show change history for entity")
+    watch_hist.add_argument("entity_name", help="Entity name")
+    watch_hist.add_argument("--limit", type=int, default=20)
+
     args = parser.parse_args()
 
     # Logging
@@ -118,6 +136,8 @@ def main() -> None:
             _cmd_serve(args)
         elif args.command == "status":
             _cmd_status(args)
+        elif args.command == "watch":
+            _cmd_watch(args)
     except KeyboardInterrupt:
         print("\nInterrupted.")
         sys.exit(130)
@@ -586,6 +606,80 @@ def _cmd_status(args) -> None:
         return
 
     print(report.summary)
+
+
+def _cmd_watch(args) -> None:
+    """Watchlist monitoring commands."""
+    from emet.agent.watchlist import (
+        Watchlist, format_notification, send_notification, install_watchlist_cron,
+    )
+
+    wl = Watchlist()
+    sub = getattr(args, "watch_command", None)
+
+    if sub == "add":
+        entity = wl.add(args.entity_name, entity_type=args.type, tags=args.tag)
+        print(f"✅ Watching: {entity.name} ({entity.entity_type})")
+
+    elif sub == "remove":
+        if wl.remove(args.entity_name):
+            print(f"Removed: {args.entity_name}")
+        else:
+            print(f"Not found: {args.entity_name}")
+
+    elif sub == "list":
+        entities = wl.list_entities()
+        if not entities:
+            print("Watchlist is empty. Add entities with: emet watch add \"Entity Name\"")
+            return
+        print(f"Watching {len(entities)} entities:\n")
+        for e in entities:
+            status = "✅" if e.enabled else "⏸️"
+            tags = f" [{', '.join(e.tags)}]" if e.tags else ""
+            print(f"  {status} {e.name} ({e.entity_type}){tags}")
+            print(f"     Added: {e.added_at[:10]}")
+
+    elif sub == "run":
+        if getattr(args, "install_cron", False):
+            ok, msg = install_watchlist_cron()
+            print(msg)
+            return
+        result = asyncio.run(wl.check_all())
+        quiet = getattr(args, "quiet", False)
+        if quiet and not result.deltas:
+            return
+        msg = format_notification(result)
+        if msg:
+            method = getattr(args, "notify", "stdout")
+            send_notification(msg, method=method)
+        else:
+            if not quiet:
+                print(result.summary)
+        if result.errors:
+            for err in result.errors:
+                print(f"  ⚠️ Error: {err}")
+
+    elif sub == "history":
+        events = wl.get_history(args.entity_name, limit=args.limit)
+        if not events:
+            print(f"No change history for '{args.entity_name}'")
+            return
+        print(f"Change history for '{args.entity_name}' ({len(events)} events):\n")
+        for ev in events:
+            icon = {
+                "critical": "🚨",
+                "high": "⚠️",
+                "medium": "📋",
+                "low": "ℹ️",
+            }.get(ev.get("severity", ""), "•")
+            date = ev.get("detected_at", "")[:10]
+            print(f"  {date} {icon} {ev.get('summary', '')}")
+
+    else:
+        print("Usage: emet watch {add|list|run|remove|history}")
+        print("  emet watch add \"Viktor Bout\" --type Person")
+        print("  emet watch run")
+        print("  emet watch run --install-cron")
 
 
 if __name__ == "__main__":
