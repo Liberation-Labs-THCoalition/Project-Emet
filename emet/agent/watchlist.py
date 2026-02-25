@@ -33,6 +33,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import shutil
 from dataclasses import dataclass, field
@@ -476,9 +477,10 @@ def send_notification(message: str, method: str = "stdout") -> bool:
     """Send a notification via the configured method.
 
     Methods:
-        stdout: Print to console (default, cron-friendly)
-        file:   Append to investigations/watchlist/alerts.log
-        notify: Desktop notification via notify-send (Linux)
+        stdout:  Print to console (default, cron-friendly)
+        file:    Append to investigations/watchlist/alerts.log
+        notify:  Desktop notification via notify-send (Linux)
+        webhook: POST to EMET_WEBHOOK_URL (Slack, Discord, email relay, etc.)
     """
     if not message:
         return False
@@ -503,9 +505,27 @@ def send_notification(message: str, method: str = "stdout") -> bool:
             )
             return True
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            # Fallback to stdout
             print(message)
             return True
+
+    elif method == "webhook":
+        url = os.environ.get("EMET_WEBHOOK_URL", "")
+        if not url:
+            logger.warning("EMET_WEBHOOK_URL not set, falling back to stdout")
+            print(message)
+            return False
+        try:
+            import httpx
+            # Slack-compatible payload (also works with Discord, Mattermost, etc.)
+            payload = {"text": message}
+            resp = httpx.post(url, json=payload, timeout=10.0)
+            resp.raise_for_status()
+            return True
+        except Exception as exc:
+            logger.warning("Webhook delivery failed: %s", exc)
+            # Fallback to stdout
+            print(message)
+            return False
 
     return False
 

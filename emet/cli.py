@@ -103,7 +103,7 @@ def main() -> None:
     watch_run = watch_sub.add_parser("run", help="Check all entities for changes")
     watch_run.add_argument("--quiet", action="store_true", help="Only output if changes found")
     watch_run.add_argument("--install-cron", action="store_true", help="Install daily watchlist cron")
-    watch_run.add_argument("--notify", choices=["stdout", "file", "notify"], default="stdout")
+    watch_run.add_argument("--notify", choices=["stdout", "file", "notify", "webhook"], default="stdout")
     watch_rm = watch_sub.add_parser("remove", help="Remove entity from watchlist")
     watch_rm.add_argument("entity_name", help="Entity name to remove")
     watch_hist = watch_sub.add_parser("history", help="Show change history for entity")
