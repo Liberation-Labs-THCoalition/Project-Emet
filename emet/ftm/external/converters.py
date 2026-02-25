@@ -432,3 +432,48 @@ def gleif_relationship_to_ftm(
             "relationship_type": relationship_type,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Aleph (already native FtM — minimal conversion)
+# ---------------------------------------------------------------------------
+
+
+def aleph_entity_to_ftm(entity: dict[str, Any], aleph_host: str = "") -> dict[str, Any]:
+    """Convert an Aleph entity to FtM dict with provenance.
+
+    Aleph already stores entities in FollowTheMoney format, so this is
+    a pass-through with provenance tagging. The א speaks FtM natively.
+    """
+    entity_id = entity.get("id", "")
+    collection_id = entity.get("collection_id", "")
+
+    source_url = ""
+    if aleph_host and entity_id:
+        source_url = f"{aleph_host.rstrip('/')}/entities/{entity_id}"
+
+    return {
+        "id": entity_id,
+        "schema": entity.get("schema", "Thing"),
+        "properties": entity.get("properties", {}),
+        "_provenance": _provenance(
+            source="aleph",
+            source_id=entity_id,
+            source_url=source_url,
+            confidence=1.0,  # Native FtM — zero conversion loss
+        ),
+        "_aleph": {
+            "collection_id": collection_id,
+            "role": entity.get("role", ""),
+            "updated_at": entity.get("updated_at", ""),
+        },
+    }
+
+
+def aleph_search_to_ftm_list(
+    response: dict[str, Any],
+    aleph_host: str = "",
+) -> list[dict[str, Any]]:
+    """Convert Aleph search response to list of FtM entities."""
+    results = response.get("results", [])
+    return [aleph_entity_to_ftm(r, aleph_host=aleph_host) for r in results]

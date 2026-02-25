@@ -391,3 +391,35 @@ class TestMCPToolDispatch:
 
         # GDELT should find news about Elon Musk
         assert "article_count" in result
+
+
+# ---------------------------------------------------------------------------
+# Aleph-backed investigation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.live
+@pytest.mark.live_slow
+class TestAlephInvestigation:
+
+    @pytest.mark.asyncio
+    async def test_investigation_with_aleph(self, require_aleph, tmp_dir):
+        """Full investigation with Aleph as a data source."""
+        from emet.agent.loop import InvestigationAgent, AgentConfig
+
+        config = AgentConfig(
+            max_turns=6,
+            llm_provider="stub",
+            tool_timeout_seconds=30.0,
+            memory_dir=tmp_dir,
+        )
+        agent = InvestigationAgent(config=config)
+        session = await agent.investigate("offshore shell company network")
+
+        assert session.finding_count >= 1
+        # Aleph entities should appear in findings if instance has data
+        all_entities = []
+        for f in session.findings:
+            all_entities.extend(f.entities)
+        # At minimum, search should have run
+        tools_used = {t["tool"] for t in session.tool_history}
+        assert "search_entities" in tools_used

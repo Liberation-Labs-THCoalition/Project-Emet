@@ -43,6 +43,7 @@ from emet.ftm.external.adapters import (
     YenteClient,
     YenteConfig,
 )
+from emet.ftm.aleph_client import AlephClient, AlephConfig
 from emet.ftm.external.companies_house import (
     CompaniesHouseClient,
     CompaniesHouseConfig,
@@ -52,6 +53,7 @@ from emet.ftm.external.edgar import (
     EDGARConfig,
 )
 from emet.ftm.external.converters import (
+    aleph_search_to_ftm_list,
     gleif_search_to_ftm_list,
     icij_search_to_ftm_list,
     oc_search_to_ftm_list,
@@ -77,6 +79,7 @@ class FederationConfig:
     """Configuration for the federated search layer."""
 
     # Source enable/disable
+    enable_aleph: bool = False  # Requires ALEPH_HOST + ALEPH_API_KEY
     enable_opensanctions: bool = True
     enable_opencorporates: bool = True
     enable_icij: bool = True
@@ -85,6 +88,7 @@ class FederationConfig:
     enable_edgar: bool = True
 
     # Client configs
+    aleph_config: AlephConfig = field(default_factory=AlephConfig)
     yente_config: YenteConfig = field(default_factory=YenteConfig)
     opencorporates_config: OpenCorporatesConfig = field(default_factory=OpenCorporatesConfig)
     icij_config: ICIJConfig = field(default_factory=ICIJConfig)
@@ -115,12 +119,16 @@ class FederationConfig:
         """
         import os
 
+        aleph_host = os.getenv("ALEPH_HOST", "")
+        aleph_key = os.getenv("ALEPH_API_KEY", "")
         opensanctions_key = os.getenv("OPENSANCTIONS_API_KEY", "")
         opencorporates_key = os.getenv("OPENCORPORATES_API_TOKEN", "")
         companies_house_key = os.getenv("COMPANIES_HOUSE_API_KEY", "")
         edgar_agent = os.getenv("EDGAR_USER_AGENT", "")
 
         return cls(
+            # Aleph requires both host and key
+            enable_aleph=bool(aleph_host and aleph_key),
             enable_opensanctions=bool(opensanctions_key),
             enable_opencorporates=bool(opencorporates_key),
             enable_companies_house=bool(companies_house_key),
@@ -128,6 +136,7 @@ class FederationConfig:
             enable_icij=True,
             enable_gleif=True,
             enable_edgar=True,
+            aleph_config=AlephConfig(host=aleph_host, api_key=aleph_key) if aleph_host else AlephConfig(),
             yente_config=YenteConfig(api_key=opensanctions_key),
             opencorporates_config=OpenCorporatesConfig(api_token=opencorporates_key),
             companies_house_config=CompaniesHouseConfig(api_key=companies_house_key),
@@ -239,6 +248,8 @@ class FederatedSearch:
 
         # Initialize clients
         self._clients: dict[str, Any] = {}
+        if self._config.enable_aleph:
+            self._clients["aleph"] = AlephClient(self._config.aleph_config)
         if self._config.enable_opensanctions:
             self._clients["opensanctions"] = YenteClient(self._config.yente_config)
         if self._config.enable_opencorporates:
@@ -265,6 +276,39 @@ class FederatedSearch:
         )
 
     # -- Individual source searches -----------------------------------------
+
+    async def _search_aleph(
+        self, query: str, limit: int, entity_type: str,
+    ) -> list[dict[str, Any]]:
+        """Search Aleph — the א that gives the golem life.
+
+        Aleph returns native FtM entities. Supports schema filtering
+        and full-text Elasticsearch query syntax.
+        """
+        client = self._clients.get("aleph")
+        if not client:
+            return []
+
+        cache_key = self._cache.make_key(
+            "aleph", "search", {"q": query, "limit": limit, "type": entity_type}
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # Map entity_type to FtM schema
+        schema = ""
+        if entity_type.lower() in ("person", "people"):
+            schema = "Person"
+        elif entity_type.lower() in ("company", "organization", "org"):
+            schema = "Company"
+
+        response = await client.search(query, schema=schema, limit=limit)
+        aleph_host = self._config.aleph_config.host
+        entities = aleph_search_to_ftm_list(response, aleph_host=aleph_host)
+
+        self._cache.set(cache_key, entities)
+        return entities
 
     async def _search_opensanctions(
         self, query: str, limit: int, entity_type: str,
@@ -462,6 +506,7 @@ class FederatedSearch:
         tasks: dict[str, asyncio.Task] = {}
 
         source_methods = {
+            "aleph": self._search_aleph,
             "opensanctions": self._search_opensanctions,
             "opencorporates": self._search_opencorporates,
             "icij": self._search_icij,

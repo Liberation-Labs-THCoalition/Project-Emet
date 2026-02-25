@@ -66,7 +66,7 @@ class TestToolDefinitions:
 
     def test_tool_count(self):
         """We should have 10 tools defined."""
-        assert len(EMET_TOOLS) == 12
+        assert len(EMET_TOOLS) == 13
 
     def test_all_tools_have_names(self):
         for tool in EMET_TOOLS:
@@ -136,7 +136,7 @@ class TestToolExecutor:
 
     def test_list_tools_format(self):
         tools = self.executor.list_tools()
-        assert len(tools) == 12
+        assert len(tools) == 13
         for tool in tools:
             assert "name" in tool
             assert "description" in tool
@@ -414,7 +414,7 @@ class TestMCPServer:
         }
         response = await self.server.handle_message(msg)
         tools = response["result"]["tools"]
-        assert len(tools) == 12
+        assert len(tools) == 13
         names = {t["name"] for t in tools}
         assert "search_entities" in names
         assert "osint_recon" in names

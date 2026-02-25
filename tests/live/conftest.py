@@ -5,6 +5,8 @@ cluster with API keys configured.  They are skipped by default in CI
 unless explicitly invoked with ``pytest -m live tests/live/``.
 
 Required env vars (set in .env or cluster secrets):
+    ALEPH_HOST               - Aleph instance URL (OpenAleph or Pro)
+    ALEPH_API_KEY            - Aleph API key
     OPENSANCTIONS_API_KEY    - OpenSanctions screening API
     OPENCORPORATES_API_TOKEN - OpenCorporates corporate search
     COMPANIES_HOUSE_API_KEY  - UK Companies House (free)
@@ -34,6 +36,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "live_slow: live test taking >30 seconds")
     config.addinivalue_line("markers", "live_llm: requires Anthropic or Ollama")
     config.addinivalue_line("markers", "live_blockchain: requires Etherscan API key")
+    config.addinivalue_line("markers", "live_aleph: requires Aleph instance")
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +46,8 @@ def pytest_configure(config):
 @dataclass
 class LiveTestConfig:
     """Tracks which APIs are available for testing."""
+    aleph_host: str = ""
+    aleph_key: str = ""
     opensanctions_key: str = ""
     opencorporates_key: str = ""
     companies_house_key: str = ""
@@ -54,6 +59,8 @@ class LiveTestConfig:
     @classmethod
     def from_env(cls) -> "LiveTestConfig":
         return cls(
+            aleph_host=os.getenv("ALEPH_HOST", ""),
+            aleph_key=os.getenv("ALEPH_API_KEY", ""),
             opensanctions_key=os.getenv("OPENSANCTIONS_API_KEY", ""),
             opencorporates_key=os.getenv("OPENCORPORATES_API_TOKEN", ""),
             companies_house_key=os.getenv("COMPANIES_HOUSE_API_KEY", ""),
@@ -62,6 +69,10 @@ class LiveTestConfig:
             ollama_host=os.getenv("OLLAMA_HOST", ""),
             edgar_user_agent=os.getenv("EDGAR_USER_AGENT", ""),
         )
+
+    @property
+    def has_aleph(self) -> bool:
+        return bool(self.aleph_host and self.aleph_key)
 
     @property
     def has_opensanctions(self) -> bool:
@@ -90,6 +101,8 @@ class LiveTestConfig:
     @property
     def available_sources(self) -> list[str]:
         sources = ["icij", "gleif", "edgar"]  # Always available (no key)
+        if self.has_aleph:
+            sources.append("aleph")
         if self.has_opensanctions:
             sources.append("opensanctions")
         if self.has_opencorporates:
@@ -116,6 +129,12 @@ def tmp_dir():
     yield d
     import shutil
     shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.fixture
+def require_aleph(live_config):
+    if not live_config.has_aleph:
+        pytest.skip("ALEPH_HOST and ALEPH_API_KEY not set")
 
 
 @pytest.fixture

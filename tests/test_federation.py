@@ -411,6 +411,7 @@ class TestFederatedSearchDeduplication:
 class TestFederatedSearchSourceStatus:
     def test_source_status_disabled(self) -> None:
         federation = FederatedSearch(FederationConfig(
+            enable_aleph=False,
             enable_opensanctions=False,
             enable_opencorporates=False,
             enable_icij=False,

@@ -177,3 +177,63 @@ class TestFederatedSearchLive:
 
         assert result.get("result_count", 0) >= 1
         assert "entities" in result
+
+
+
+# ---------------------------------------------------------------------------
+# Aleph — the א
+# ---------------------------------------------------------------------------
+
+@pytest.mark.live
+class TestAlephLive:
+
+    @pytest.mark.asyncio
+    async def test_aleph_search(self, require_aleph, live_config):
+        """Search Aleph for a known entity."""
+        from emet.ftm.aleph_client import AlephClient, AlephConfig
+
+        config = AlephConfig(host=live_config.aleph_host, api_key=live_config.aleph_key)
+        client = AlephClient(config)
+        result = await client.search("Gazprom", limit=5)
+
+        assert "results" in result
+        assert result.get("total", 0) >= 0  # May be empty on fresh instance
+
+    @pytest.mark.asyncio
+    async def test_aleph_list_collections(self, require_aleph, live_config):
+        """Aleph should expose accessible collections."""
+        from emet.ftm.aleph_client import AlephClient, AlephConfig
+
+        config = AlephConfig(host=live_config.aleph_host, api_key=live_config.aleph_key)
+        client = AlephClient(config)
+        result = await client.list_collections(limit=10)
+
+        assert "results" in result
+
+    @pytest.mark.asyncio
+    async def test_aleph_in_federation(self, require_aleph):
+        """Aleph should participate in federated search when configured."""
+        from emet.ftm.external.federation import FederatedSearch, FederationConfig
+
+        config = FederationConfig.from_env()
+        assert config.enable_aleph, "Aleph should be enabled when ALEPH_HOST + ALEPH_API_KEY set"
+
+        federation = FederatedSearch(config)
+        result = await federation.search_entity("shell company", entity_type="Company")
+
+        assert "aleph" in result.source_stats, "Aleph should appear in source stats"
+
+    @pytest.mark.asyncio
+    async def test_aleph_returns_ftm_entities(self, require_aleph, live_config):
+        """Aleph results should convert to valid FtM entity dicts."""
+        from emet.ftm.aleph_client import AlephClient, AlephConfig
+        from emet.ftm.external.converters import aleph_search_to_ftm_list
+
+        config = AlephConfig(host=live_config.aleph_host, api_key=live_config.aleph_key)
+        client = AlephClient(config)
+        response = await client.search("bank", limit=5)
+
+        entities = aleph_search_to_ftm_list(response, aleph_host=live_config.aleph_host)
+        # If instance has data, entities should have FtM structure
+        for e in entities:
+            assert "id" in e or "schema" in e, f"Entity should have FtM structure: {e}"

@@ -47,7 +47,7 @@ EMET_TOOLS: list[MCPToolDef] = [
     MCPToolDef(
         name="search_entities",
         description=(
-            "Federated search across OpenSanctions, OpenCorporates, ICIJ "
+            "Federated search across Aleph, OpenSanctions, OpenCorporates, ICIJ "
             "Offshore Leaks, and GLEIF.  Returns FtM entities with provenance "
             "tracking.  Supports Person, Company, and general queries."
         ),
@@ -68,7 +68,7 @@ EMET_TOOLS: list[MCPToolDef] = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": (
-                        "Limit to specific sources: opensanctions, "
+                        "Limit to specific sources: aleph, opensanctions, "
                         "opencorporates, icij, gleif.  Empty = all."
                     ),
                 },
@@ -76,6 +76,56 @@ EMET_TOOLS: list[MCPToolDef] = [
                     "type": "integer",
                     "default": 20,
                     "description": "Max results per source",
+                },
+            },
+            "required": ["query"],
+        },
+        category="search",
+    ),
+
+    MCPToolDef(
+        name="search_aleph",
+        description=(
+            "Search Aleph (OCCRP investigative data platform) directly.  "
+            "Full-text search across all collections with Elasticsearch "
+            "query syntax.  Returns native FtM entities.  Supports schema "
+            "filtering, collection scoping, and country filtering.  "
+            "Use this for deep dives into OCCRP datasets, cross-referencing "
+            "against leaked documents, and accessing curated investigative data."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Search query.  Supports Elasticsearch syntax: "
+                        "boolean (AND, OR, NOT), wildcards (*), fuzzy (~), "
+                        "and quoted phrases."
+                    ),
+                },
+                "schema": {
+                    "type": "string",
+                    "default": "",
+                    "description": (
+                        "FtM schema filter: Person, Company, LegalEntity, "
+                        "Document, Email, etc.  Empty = all types."
+                    ),
+                },
+                "collection_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Limit to specific collection IDs.  Empty = all accessible.",
+                },
+                "countries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "ISO country codes to filter by (e.g. ['ru', 'cy']).",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Max results to return",
                 },
             },
             "required": ["query"],
@@ -467,6 +517,7 @@ class EmetToolExecutor:
         self.demo_mode = demo_mode
         self._tool_map: dict[str, Callable[..., Coroutine[Any, Any, dict]]] = {
             "search_entities": self._search_entities,
+            "search_aleph": self._search_aleph,
             "osint_recon": self._osint_recon,
             "analyze_graph": self._analyze_graph,
             "trace_ownership": self._trace_ownership,
@@ -582,6 +633,56 @@ class EmetToolExecutor:
             "source_stats": federated_result.source_stats,
             "errors": federated_result.errors,
             "queried_at": federated_result.queried_at,
+        }
+
+    async def _search_aleph(
+        self,
+        query: str,
+        schema: str = "",
+        collection_ids: list[str] | None = None,
+        countries: list[str] | None = None,
+        limit: int = 20,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Search Aleph directly — the א that gives the golem life."""
+        import os
+        from emet.ftm.aleph_client import AlephClient, AlephConfig
+        from emet.ftm.external.converters import aleph_search_to_ftm_list
+
+        aleph_host = os.getenv("ALEPH_HOST", "")
+        aleph_key = os.getenv("ALEPH_API_KEY", "")
+
+        if not aleph_host or not aleph_key:
+            return {
+                "query": query,
+                "result_count": 0,
+                "entities": [],
+                "error": "ALEPH_HOST and ALEPH_API_KEY not configured",
+            }
+
+        client = self._get_or_create(
+            "aleph",
+            lambda: AlephClient(AlephConfig(host=aleph_host, api_key=aleph_key)),
+        )
+
+        response = await client.search(
+            query=query,
+            schema=schema,
+            collections=collection_ids,
+            countries=countries,
+            limit=limit,
+        )
+
+        entities = aleph_search_to_ftm_list(response, aleph_host=aleph_host)
+        total = response.get("total", len(entities))
+
+        return {
+            "query": query,
+            "schema": schema,
+            "result_count": len(entities),
+            "total_available": total,
+            "entities": entities,
+            "collections_searched": collection_ids or "all",
         }
 
     async def _osint_recon(

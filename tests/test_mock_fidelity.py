@@ -31,9 +31,9 @@ class TestMockFidelity:
         """Executor must have handlers for all 12 MCP tool definitions."""
         executor = EmetToolExecutor()
         tool_names = {t["name"] for t in executor.list_tools()}
-        assert len(tool_names) == 12
+        assert len(tool_names) == 13
         expected = {
-            "search_entities", "osint_recon", "analyze_graph",
+            "search_entities", "search_aleph", "osint_recon", "analyze_graph",
             "trace_ownership", "screen_sanctions", "investigate_blockchain",
             "monitor_entity", "check_alerts", "generate_report",
             "ingest_documents", "list_workflows", "run_workflow",

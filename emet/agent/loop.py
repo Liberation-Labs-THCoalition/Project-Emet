@@ -40,6 +40,10 @@ AGENT_TOOLS = {
         "description": "Search for entities (people, companies, sanctions) across multiple sources",
         "params": ["query", "entity_type", "sources"],
     },
+    "search_aleph": {
+        "description": "Search Aleph (OCCRP investigative data) for entities, documents, leaked records",
+        "params": ["query", "schema", "collection_ids", "countries"],
+    },
     "osint_recon": {
         "description": "OSINT reconnaissance on a target (domain, email, IP)",
         "params": ["target", "scan_type"],
