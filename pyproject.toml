@@ -22,37 +22,19 @@ classifiers = [
 ]
 
 dependencies = [
-    # Core
+    # Core — the investigation pipeline
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
     "pydantic>=2.5.0",
-    "pydantic-settings>=2.1.0",
-    "sqlalchemy>=2.0.23",
-    "alembic>=1.13.0",
     "httpx>=0.25.0",
-    "redis>=5.0.0",
-    "celery>=5.3.0",
+    "networkx>=3.2.0",
+    "numpy>=1.26.0",
 
-    # FollowTheMoney ecosystem
-    "followthemoney>=4.4.0",
-    "rigour>=0.6.0",
-    "nomenklatura>=3.7.0",
-    "alephclient>=2.4.0",
-
-    # LLM / AI
-    "langchain>=0.1.0",
-    "langgraph>=0.0.20",
+    # LLM (anthropic is lazy-imported, only needed for non-stub mode)
     "anthropic>=0.18.0",
-    "openai>=1.10.0",
 
-    # NLP
-    "spacy>=3.7.0",
-
-    # Observability
-    "opentelemetry-api>=1.22.0",
-    "opentelemetry-sdk>=1.22.0",
-    "structlog>=24.1.0",
-    "prometheus-client>=0.19.0",
+    # PDF reports
+    "reportlab>=4.1.0",
 ]
 
 [project.optional-dependencies]
@@ -64,21 +46,44 @@ dev = [
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
 ]
+# FollowTheMoney ecosystem (for native FtM entity handling)
+ftm = [
+    "followthemoney>=4.4.0",
+    "rigour>=0.6.0",
+    "nomenklatura>=3.7.0",
+    "alephclient>=2.4.0",
+]
+# Production infrastructure (database, observability, task queue)
+production = [
+    "sqlalchemy>=2.0.23",
+    "alembic>=1.13.0",
+    "redis>=5.0.0",
+    "celery>=5.3.0",
+    "opentelemetry-api>=1.22.0",
+    "opentelemetry-sdk>=1.22.0",
+    "structlog>=24.1.0",
+    "prometheus-client>=0.19.0",
+    "pydantic-settings>=2.1.0",
+]
+# NLP (spaCy + transformers for entity extraction)
 nlp = [
+    "spacy>=3.7.0",
     "en-core-web-trf @ https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.7.3/en_core_web_trf-3.7.3-py3-none-any.whl",
     "transformers>=4.36.0",
     "torch>=2.1.0",
 ]
+# Advanced graph algorithms
 graph = [
-    "networkx>=3.2.0",
     "python-louvain>=0.16",
     "igraph>=0.11.0",
 ]
+# OSINT reconnaissance
 osint = [
     "spiderfoot-client>=0.1.0",
 ]
-mcp = [
-    "uvicorn>=0.24.0",
+# Everything
+all = [
+    "emet[ftm,production,graph,osint]",
 ]
 
 [project.urls]

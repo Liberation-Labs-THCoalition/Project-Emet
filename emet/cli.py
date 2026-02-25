@@ -88,7 +88,9 @@ def main() -> None:
     srv.add_argument("--host", default="0.0.0.0", help="HTTP host (default: 0.0.0.0)")
 
     # status
-    subparsers.add_parser("status", help="Show system status")
+    status_parser = subparsers.add_parser("status", help="Show system status")
+    status_parser.add_argument("--install-cron", action="store_true", help="Install weekly health check cron job")
+    status_parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
 
     args = parser.parse_args()
 
@@ -115,7 +117,7 @@ def main() -> None:
         elif args.command == "serve":
             _cmd_serve(args)
         elif args.command == "status":
-            _cmd_status()
+            _cmd_status(args)
     except KeyboardInterrupt:
         print("\nInterrupted.")
         sys.exit(130)
@@ -558,56 +560,32 @@ def _cmd_serve(args: argparse.Namespace) -> None:
             sys.exit(1)
 
 
-def _cmd_status() -> None:
-    """Show system status."""
-    print("EMET — Investigative Journalism Agent")
-    print("=" * 40)
+def _cmd_status(args) -> None:
+    """Show system health and suggest maintenance actions."""
+    from emet.agent.health import HealthCheck, install_cron
 
-    # Modules
-    modules = {
-        "cognition": "emet.cognition",
-        "skills": "emet.skills",
-        "ftm": "emet.ftm",
-        "graph": "emet.graph",
-        "mcp": "emet.mcp",
-        "workflows": "emet.workflows",
-        "agent": "emet.agent",
-        "export": "emet.export",
-        "monitoring": "emet.monitoring",
-    }
+    # Handle --install-cron
+    if getattr(args, "install_cron", False):
+        ok, msg = install_cron()
+        print(msg)
+        return
 
-    for name, module_path in modules.items():
-        try:
-            __import__(module_path)
-            print(f"  {name:15s} ✓")
-        except Exception as e:
-            print(f"  {name:15s} ✗ ({e})")
+    # Run health check
+    report = HealthCheck.run()
 
-    # Skills
-    try:
-        from emet.skills import get_chip, SKILL_CHIP_REGISTRY
-        loaded = len(SKILL_CHIP_REGISTRY)
-        total = loaded
-        print(f"\n  Skill chips: {loaded}/{total}")
-    except Exception:
-        print(f"\n  Skill chips: unavailable")
+    # --quiet: only show warnings and errors
+    if getattr(args, "quiet", False):
+        problems = [c for c in report.checks if c.status in ("warning", "error")]
+        if not problems:
+            return  # Silent if healthy
+        for c in problems:
+            icon = {"warning": "⚠️", "error": "❌"}.get(c.status, "?")
+            print(f"{icon} {c.name}: {c.message}")
+            if c.suggestion:
+                print(f"  → {c.suggestion}")
+        return
 
-    # Workflows
-    try:
-        from emet.workflows import WorkflowRegistry
-        reg = WorkflowRegistry()
-        reg.load_builtins()
-        print(f"  Workflows:   {len(reg.list_workflows())}")
-    except Exception:
-        print(f"  Workflows:   unavailable")
-
-    # LLM
-    try:
-        from emet.config.settings import settings
-        print(f"\n  LLM:         {settings.llm_provider}")
-        print(f"  Ollama URL:  {settings.ollama_base_url}")
-    except Exception:
-        print(f"\n  LLM:         (config unavailable)")
+    print(report.summary)
 
 
 if __name__ == "__main__":

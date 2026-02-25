@@ -295,6 +295,19 @@ class InvestigationAgent:
             except Exception as exc:
                 logger.debug("Audit archive close failed: %s", exc)
 
+        # Post-investigation: suggest next steps
+        try:
+            from emet.agent.health import suggest_next_steps
+            summary = session.summary()
+            next_steps = suggest_next_steps(summary)
+            if next_steps:
+                session._next_steps = [
+                    {"action": s.action, "reason": s.reason, "command": s.command}
+                    for s in next_steps
+                ]
+        except Exception:
+            pass  # Non-critical
+
         return session
 
     async def _initial_search(self, session: Session) -> None:
