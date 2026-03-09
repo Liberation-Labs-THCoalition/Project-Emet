@@ -44,12 +44,15 @@ An LLM reasons about what to do next. The agent searches entity databases, scree
 
 ## Quick Start
 
+**Requires Python 3.11+** ([download](https://www.python.org/downloads/))
+
 ```bash
 # Install
 git clone https://github.com/Liberation-Labs-THCoalition/Project-Emet.git
 cd Project-Emet
 pip install -e ".[dev]"
 cp .env.example .env
+# Edit .env with your API keys (see Configuration below)
 
 # Run an investigation (stub mode — no API keys needed)
 emet investigate "Trace ownership of Acme Holdings" --llm stub
@@ -73,6 +76,22 @@ emet serve --http --port 8000
 # Start the MCP server (for Claude Desktop, etc.)
 emet serve --transport stdio
 ```
+
+<details>
+<summary><b>Windows (PowerShell) setup notes</b></summary>
+
+```powershell
+# Set API keys (PowerShell doesn't auto-load .env files)
+$env:ANTHROPIC_API_KEY="sk-ant-..."
+$env:OPENSANCTIONS_API_KEY="..."
+
+# If 'emet' command not found after install, add Scripts to PATH:
+$env:PATH += ";$env:LOCALAPPDATA\Programs\Python\Python312\Scripts"
+
+# To make permanent:
+[Environment]::SetEnvironmentVariable("PATH", $env:PATH, "User")
+```
+</details>
 
 ## Interfaces
 
@@ -224,7 +243,7 @@ No external services required for development — all tools return structured mo
 ## Testing
 
 ```bash
-# Unit + integration tests (1,811 tests, ~3 minutes)
+# Unit + integration tests (1,650 tests, ~3 minutes)
 python -m pytest tests/ -q --ignore=tests/live
 
 # Live integration tests (requires API keys — see .env.example)
@@ -318,7 +337,7 @@ Project-Emet/
 │   ├── multitenancy/           # Per-investigation isolation
 │   ├── config/                 # Settings
 │   └── cli.py                  # CLI entry point
-├── tests/                      # 1,811 unit + 44 live integration tests
+├── tests/                      # 1,650 unit + 44 live integration tests
 │   └── live/                   # Live API tests (require keys, run on cluster)
 ├── docs/                       # USER_GUIDE, COMPETITIVE_ROADMAP, PILOT_PLAN
 ├── VALUES.json                 # Journalism ethics constitution

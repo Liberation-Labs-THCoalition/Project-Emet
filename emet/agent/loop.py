@@ -507,6 +507,14 @@ class InvestigationAgent:
                 cost_tracker=self._cost_tracker,
             )
             return self._llm_client
+        except ImportError as exc:
+            logger.warning(
+                "LLM unavailable — missing dependency: %s "
+                "(install with: pip install %s)",
+                exc,
+                str(exc).split("'")[-2] if "'" in str(exc) else "missing-package",
+            )
+            return None
         except Exception as exc:
             logger.debug("Cannot create LLM client: %s", exc)
             return None
@@ -599,8 +607,10 @@ Rules:
 
                 return action
 
+        except ImportError as exc:
+            logger.warning("LLM decision failed (missing dependency): %s", exc)
         except Exception as exc:
-            logger.debug("LLM decision failed: %s", exc)
+            logger.warning("LLM decision failed: %s", exc)
             # Audit: record failed LLM exchange
             if self._audit:
                 self._audit.record_event("llm_error", {

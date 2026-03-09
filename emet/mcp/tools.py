@@ -829,12 +829,39 @@ class EmetToolExecutor:
         ))
 
         # Convert input entities to FtM-style dicts for the match API
+        # Filter to schemas the /match endpoint accepts and skip empty names
+        MATCHABLE_SCHEMAS = {
+            "Person", "Company", "Organization", "LegalEntity",
+            "person", "company", "organization", "legalentity",
+        }
+
         ftm_entities = []
         for entity in entities:
+            name = entity.get("name", "").strip()
+            if not name:
+                continue
+            schema = entity.get("schema", "Person")
+            # Normalize non-matchable schemas to best guess
+            if schema not in MATCHABLE_SCHEMAS:
+                # Skip addresses, documents, and other non-entity types
+                if schema.lower() in ("address", "email", "url", "document", "page"):
+                    continue
+                # Default to LegalEntity for unknown schemas
+                schema = "LegalEntity"
+            # Capitalize first letter for FtM convention
+            schema = schema[0].upper() + schema[1:]
             ftm_entities.append({
-                "schema": entity.get("schema", "Person"),
-                "properties": {"name": [entity.get("name", "")]},
+                "schema": schema,
+                "properties": {"name": [name]},
             })
+
+        if not ftm_entities:
+            return {
+                "screened_count": 0,
+                "match_count": 0,
+                "threshold": threshold,
+                "matches": [],
+            }
 
         raw_matches = await client.screen_entities(ftm_entities)
 

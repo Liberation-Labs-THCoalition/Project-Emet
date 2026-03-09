@@ -355,7 +355,7 @@ These are now secondary to the agent loop + MCP tools architecture, but remain a
 |--------|-------|
 | Source files | 179 Python modules |
 | Source lines | ~50,000 |
-| Tests | 1,811 unit + 44 live |
+| Tests | 1,650 unit + 44 live |
 | Packages | 23 |
 | Commits | 40 |
 | MCP tools | 9 |

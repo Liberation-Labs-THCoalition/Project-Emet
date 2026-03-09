@@ -40,6 +40,7 @@ def main() -> None:
     # investigate
     inv = subparsers.add_parser("investigate", help="Run a full investigation")
     inv.add_argument("goal", help="Investigation goal (natural language)")
+    inv.add_argument("--llm", help="LLM provider (stub, ollama, anthropic)")
     inv.add_argument("--max-turns", type=int, default=15, help="Max agent turns")
     inv.add_argument("--no-sanctions", action="store_true", help="Skip auto sanctions screening")
     inv.add_argument("--no-news", action="store_true", help="Skip auto news check")
@@ -157,14 +158,17 @@ async def _cmd_investigate(args: argparse.Namespace) -> None:
     """Run a full agentic investigation."""
     from emet.agent import InvestigationAgent, AgentConfig
 
+    # Resolve --llm: subparser overrides global
+    llm = getattr(args, "llm", None) or "stub"
+
     # Auto-enable demo mode with stub LLM (no API keys needed)
-    demo = getattr(args, "demo", False) or args.llm == "stub"
+    demo = getattr(args, "demo", False) or llm == "stub"
 
     config = AgentConfig(
         max_turns=args.max_turns,
         auto_sanctions_screen=not args.no_sanctions,
         auto_news_check=not args.no_news,
-        llm_provider=args.llm,
+        llm_provider=llm,
         verbose=args.verbose,
         persist_path=args.save or "",
         generate_graph=True,

@@ -294,12 +294,24 @@ class GDELTClient:
         self,
         params: dict[str, str],
     ) -> list[GDELTArticle]:
-        """Fetch and parse GDELT DOC API response."""
+        """Fetch and parse GDELT DOC API response with retry on 429."""
+        import asyncio as _asyncio
+
         url = f"{GDELT_DOC_API}?{urlencode(params)}"
+        max_retries = 3
+        backoff = 2.0
 
         async with httpx.AsyncClient(timeout=self._config.timeout) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+            for attempt in range(max_retries + 1):
+                response = await client.get(url)
+                if response.status_code == 429 and attempt < max_retries:
+                    wait = backoff * (2 ** attempt)
+                    logger.info("GDELT rate limited, retrying in %.1fs (attempt %d/%d)",
+                                wait, attempt + 1, max_retries)
+                    await _asyncio.sleep(wait)
+                    continue
+                response.raise_for_status()
+                break
 
             data = response.json()
 
