@@ -1,6 +1,8 @@
 ---
-name: government-portal-navigation  
+name: government-portal-navigation
 description: "Specialized automation for navigating government transparency portals including Legistar meeting systems, NextRequest PRA portals, Cal-Access campaign finance, and public records databases. Use this skill when you need to scrape government meetings, automate public records requests, or extract data from official portals."
+tools: [Read, Grep, Bash, WebFetch, search_entities, ingest_documents]
+effort: high
 ---
 
 # Government Portal Navigation Skill

@@ -1,6 +1,8 @@
 ---
 name: document-ocr-text-extraction
 description: "Comprehensive PDF and document processing for government records. Extracts text from PDFs and scanned documents, recognizes tables and forms, performs OCR, and structures unstructured documents. Use this skill when processing government PDFs, extracting data from scanned records, or analyzing document metadata."
+tools: [Read, Grep, Bash, ingest_documents, search_entities]
+effort: high
 ---
 
 # Document OCR & Text Extraction Skill

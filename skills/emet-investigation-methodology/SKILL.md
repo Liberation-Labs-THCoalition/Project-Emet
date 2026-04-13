@@ -1,6 +1,8 @@
 ---
 name: emet-investigation-methodology
 description: "Core methodology for driving Project Emet investigations. Covers the 13 MCP tools, their parameters, optimal investigation sequences, federation source selection, blockchain chain selection, export formats, and the execute_raw/execute distinction. Use this skill whenever building, debugging, or extending Emet investigation workflows, agent prompts, or tool integrations."
+tools: [Read, Grep, Bash, search_entities, screen_sanctions, trace_ownership, investigate_blockchain, analyze_graph, osint_recon, monitor_entity, generate_report]
+effort: high
 ---
 
 # Emet Investigation Methodology

@@ -1,6 +1,8 @@
 ---
 name: blockchain-forensics
 description: "Blockchain investigation methodology for Emet's three-chain analysis (Ethereum, Bitcoin, Tron). Covers USDT-TRC20 sanctions evasion patterns, mixer detection heuristics, cross-chain hop tracking, counterparty clustering, and FtM entity conversion. Use this skill when investigating blockchain addresses, tracing illicit financial flows, or analyzing cryptocurrency transaction patterns."
+tools: [Read, Grep, Bash, investigate_blockchain, screen_sanctions, analyze_graph, search_entities]
+effort: high
 ---
 
 # Blockchain Forensics for Emet

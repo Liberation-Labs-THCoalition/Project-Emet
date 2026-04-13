@@ -1,6 +1,8 @@
 ---
 name: network-analysis-graph-theory
 description: "Emet-aware network analysis for investigative intelligence. Maps graph theory concepts to Emet's 7 built-in algorithms, FtM entity graph construction, and multi-format export. Use this skill when interpreting graph analysis results, choosing algorithms for specific investigative questions, or extending Emet's graph capabilities."
+tools: [Read, Grep, Bash, analyze_graph, search_entities, trace_ownership]
+effort: high
 ---
 
 # Network Analysis for Emet Investigations

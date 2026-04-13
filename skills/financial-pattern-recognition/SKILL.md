@@ -1,6 +1,8 @@
 ---
 name: financial-pattern-recognition
 description: "Advanced corruption detection through financial flow analysis, campaign contribution patterns, contract award correlations, and pay-to-play scheme identification. Use this skill when analyzing government financial data, detecting bid rigging, identifying conflicts of interest, or mapping money influence pathways."
+tools: [Read, Grep, Bash, search_entities, trace_ownership, analyze_graph, screen_sanctions, monitor_entity]
+effort: high
 ---
 
 # Financial Pattern Recognition Skill
