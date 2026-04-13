@@ -34,6 +34,11 @@ from emet.cognition.efe import (
     PUBLICATION_WEIGHTS,
     VERIFICATION_WEIGHTS,
 )
+from emet.cognition.fast_classifier import (
+    ClassificationStage,
+    FastClassifier,
+    FastClassifierConfig,
+)
 from emet.cognition.model_router import ModelRouter, ModelTier
 
 logger = logging.getLogger(__name__)
@@ -291,6 +296,7 @@ class Orchestrator:
         self._model_router = model_router or ModelRouter()
         self._llm_classifier = llm_classifier
         self._efe = efe_calculator or EFECalculator()
+        self._fast = FastClassifier()
 
     # -- public API ---------------------------------------------------------
 
@@ -301,6 +307,7 @@ class Orchestrator:
     ) -> RoutingDecision:
         """Classify *message* into an investigation domain.
 
+        0. Fast classifier pre-screening (deny, escalate, or auto-route).
         1. Try keyword matching against the routing table.
         2. If multiple candidate domains or low confidence, use EFE scoring.
         3. If confidence still below threshold and LLM classifier exists, delegate.
@@ -310,6 +317,30 @@ class Orchestrator:
 
         efe_score: EFEScore | None = None
 
+        # Stage 1: Fast classifier pre-screening
+        fast_result = self._fast.classify(
+            message, domain, confidence, candidate_hits,
+        )
+
+        if fast_result.stage == ClassificationStage.FAST_DENY:
+            tier = ModelTier.FAST
+            return RoutingDecision(
+                skill_domain="blocked",
+                confidence=0.0,
+                reasoning=fast_result.reason,
+                model_tier=tier,
+            )
+
+        if fast_result.stage == ClassificationStage.FAST_ALLOW:
+            tier = self._tier_for_domain(fast_result.domain or domain)
+            return RoutingDecision(
+                skill_domain=fast_result.domain or domain,
+                confidence=fast_result.confidence,
+                reasoning=fast_result.reason,
+                model_tier=tier,
+            )
+
+        # Stage 2: Full EFE evaluation (escalated requests only)
         if len(candidate_hits) > 1 or confidence < self._config.confidence_threshold:
             efe_score = self._score_candidates_with_efe(candidate_hits, confidence)
             if efe_score is not None:
