@@ -28,6 +28,7 @@ from typing import Any
 from emet.agent.session import Session, Finding, Lead
 from emet.agent.safety_harness import SafetyHarness
 from emet.agent.efe_advisor import EFEAdvisor
+from emet.agent.bdi_layer import InvestigationBDI
 from emet.mcp.tools import EmetToolExecutor
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,11 @@ class InvestigationAgent:
         session = Session(goal=goal)
         session.record_reasoning(f"Starting investigation: {goal}")
 
+        # Initialize BDI reasoning layer
+        self._bdi = InvestigationBDI(session)
+        self._bdi.initialize()
+        session.record_reasoning("BDI: Goal registered as active desire")
+
         # Open audit archive for forensic recording
         from emet.agent.audit import AuditArchive
         audit_dir = self._config.memory_dir or "investigations/audit"
@@ -233,6 +239,18 @@ class InvestigationAgent:
 
             await self._process_result(session, action, result)
 
+            # BDI: update beliefs from new findings
+            for finding in session.findings[-3:]:
+                try:
+                    self._bdi.update_from_finding(finding)
+                except Exception:
+                    pass
+
+            # BDI: check coherence and suggest refocus if drifting
+            should_refocus, reason = self._bdi.should_refocus()
+            if should_refocus:
+                session.record_reasoning(f"BDI DRIFT: {reason}")
+
             # Check if we've exhausted leads
             if not session.get_open_leads() and session.turn_count >= 3:
                 session.record_reasoning(
@@ -261,6 +279,18 @@ class InvestigationAgent:
                 session.record_reasoning(f"Session saved to memory: {mem_path}")
             except Exception as exc:
                 logger.debug("Memory auto-save failed: %s", exc)
+
+        # Attach BDI summary to session
+        try:
+            session._bdi_summary = self._bdi.get_summary()
+            coherence = session._bdi_summary["coherence"]
+            session.record_reasoning(
+                f"BDI final: {session._bdi_summary['beliefs']} beliefs, "
+                f"coherence={coherence:.2f}, "
+                f"progress={session._bdi_summary['investigation_progress']:.0%}"
+            )
+        except Exception:
+            pass
 
         # Attach safety audit to session
         session._safety_audit = self._harness.audit_summary()
