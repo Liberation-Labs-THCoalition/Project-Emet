@@ -27,6 +27,7 @@ from typing import Any
 
 from emet.agent.session import Session, Finding, Lead
 from emet.agent.safety_harness import SafetyHarness
+from emet.agent.efe_advisor import EFEAdvisor
 from emet.mcp.tools import EmetToolExecutor
 
 logger = logging.getLogger(__name__)
@@ -151,6 +152,8 @@ class InvestigationAgent:
     def __init__(self, config: AgentConfig | None = None) -> None:
         self._config = config or AgentConfig()
         self._executor = EmetToolExecutor(demo_mode=self._config.demo_mode)
+        # EFE advisor — journalism-weighted action scoring
+        self._efe = EFEAdvisor()
         # Safety harness
         if self._config.enable_safety:
             self._harness = SafetyHarness.from_defaults()
@@ -441,6 +444,12 @@ class InvestigationAgent:
         action = await self._llm_decide(session)
         if action and not self._is_duplicate(session, action):
             action["_decision_source"] = "llm"
+            # Score the LLM's suggestion with EFE for audit trail
+            if action.get("tool") not in ("conclude", "generate_report"):
+                efe_score = self._efe.score_action(action, session)
+                action["_efe_score"] = efe_score.total
+                action["_efe_risk"] = efe_score.risk_component
+                action["_efe_epistemic"] = efe_score.epistemic_component
             return action
         elif action:
             session.record_reasoning(
@@ -661,11 +670,21 @@ Rules:
                 "reasoning": f"Accumulated {session.entity_count} entities — running network analysis before concluding",
             }
 
-        # --- Phase 1: Follow leads ---
+        # --- Phase 1: Follow leads (EFE-ranked) ---
         if not leads:
             return {"tool": "conclude", "args": {}, "reasoning": "No leads remaining"}
 
-        lead = leads[0]
+        # Use EFE to pick the best lead, not just the first one
+        ranked = self._efe.rank_leads(session)
+        if ranked:
+            lead, score = ranked[0]
+            session.record_reasoning(
+                f"EFE selected lead '{lead.description[:50]}' "
+                f"(score={score.total:.3f}, risk={score.risk_component:.3f}, "
+                f"epistemic={score.epistemic_component:.3f})"
+            )
+        else:
+            lead = leads[0]
         lead.status = "investigating"
 
         args: dict[str, Any] = {}
