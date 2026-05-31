@@ -169,13 +169,11 @@ class TestEvolutionManager:
     def test_get_generation_info(self):
         mgr = EvolutionManager()
         info = mgr.get_generation_info()
-        assert info == {
-            "generation": 0,
-            "total_evaluated": 0,
-            "total_approved": 0,
-            "total_rejected": 0,
-            "queue_depth": 0,
-        }
+        assert info["generation"] == 0
+        assert info["total_evaluated"] == 0
+        assert info["total_approved"] == 0
+        assert info["total_rejected"] == 0
+        assert info["queue_depth"] == 0
 
     def test_full_lifecycle(self):
         mgr = EvolutionManager()

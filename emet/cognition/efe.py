@@ -4,6 +4,9 @@ Implements a lightweight EFE scorer used by the orchestrator to rank
 candidate investigation policies. Lower total EFE indicates the preferred
 policy (least expected surprise / best alignment with desired outcomes).
 
+v2 (May 2026): Added state factor decomposition and observation model
+for proper Active Inference grounding. Reference: arXiv:2412.10425.
+
 Journalism-specific weight profiles bias decisions toward:
 - High epistemic value for entity search (prefer gathering more data)
 - High risk aversion for publication decisions (minimize false positives)
@@ -13,7 +16,9 @@ Journalism-specific weight profiles bias decisions toward:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -42,55 +47,117 @@ class EFEWeights:
             )
 
 
-# --- Investigation-specific weight profiles ---
+# ---------------------------------------------------------------------------
+# Active Inference world model (v2)
+# ---------------------------------------------------------------------------
 
-# Entity search: heavily favor information gathering over premature action.
-# Journalists should always prefer to search more before concluding.
+
+class ObservationModality(str, Enum):
+    """Channels through which the agent observes the environment."""
+    TOOL_OUTPUT = "tool_output"
+    USER_FEEDBACK = "user_feedback"
+    METRIC_STREAM = "metric_stream"
+    BDI_BELIEF = "bdi_belief"
+    DRIFT_SIGNAL = "drift_signal"
+    EXTERNAL_EVENT = "external_event"
+    SOURCE_DATA = "source_data"
+    FOIA_RESPONSE = "foia_response"
+
+
+@dataclass
+class StateFactor:
+    """A single factored dimension of the environment state.
+
+    Active Inference decomposes the world model into independent state
+    factors, each observed through one or more modalities. This enables
+    targeted belief updating: when an observation arrives on one modality,
+    only the relevant state factors need revision.
+    """
+    name: str
+    value: Any = None
+    confidence: float = 0.5
+    observation_sources: List[ObservationModality] = field(default_factory=list)
+    last_updated: Optional[str] = None
+    prior: Any = None
+
+    def update_from_observation(
+        self, observed_value: Any, observation_confidence: float = 0.8
+    ) -> None:
+        if self.value is None:
+            self.value = observed_value
+            self.confidence = observation_confidence
+        else:
+            blend = observation_confidence / (self.confidence + observation_confidence)
+            try:
+                old_val = float(self.value)
+                new_val = float(observed_value)
+                self.value = old_val * (1 - blend) + new_val * blend
+            except (TypeError, ValueError):
+                if observation_confidence > self.confidence:
+                    self.value = observed_value
+            self.confidence = min(self.confidence + observation_confidence * 0.5, 1.0)
+        from datetime import datetime, timezone
+        self.last_updated = datetime.now(timezone.utc).isoformat()
+
+
+@dataclass
+class WorldModel:
+    """Factored environment model for Active Inference.
+
+    Decomposes the agent's understanding into independent state factors,
+    each with its own observation sources and confidence.
+    """
+    factors: Dict[str, StateFactor] = field(default_factory=dict)
+
+    def add_factor(self, factor: StateFactor) -> None:
+        self.factors[factor.name] = factor
+
+    def get_factor(self, name: str) -> Optional[StateFactor]:
+        return self.factors.get(name)
+
+    def observe(
+        self, factor_name: str, value: Any, confidence: float = 0.8,
+    ) -> bool:
+        factor = self.factors.get(factor_name)
+        if factor is None:
+            return False
+        factor.update_from_observation(value, confidence)
+        return True
+
+    def get_uncertainty(self) -> float:
+        if not self.factors:
+            return 1.0
+        return 1.0 - sum(f.confidence for f in self.factors.values()) / len(self.factors)
+
+    def get_uncertain_factors(self, threshold: float = 0.5) -> List[StateFactor]:
+        return [f for f in self.factors.values() if f.confidence < threshold]
+
+    def to_predicted_outcome(self) -> Dict[str, Any]:
+        return {f.name: f.value for f in self.factors.values() if f.value is not None}
+
+    def information_gain_estimate(self, factor_name: str) -> float:
+        factor = self.factors.get(factor_name)
+        if factor is None:
+            return 0.0
+        return 1.0 - factor.confidence
+
+
+# ---------------------------------------------------------------------------
+# Investigation-specific weight profiles
+# ---------------------------------------------------------------------------
+
 ENTITY_SEARCH_WEIGHTS = EFEWeights(risk=0.2, ambiguity=0.3, epistemic=0.5)
-
-# Cross-referencing: balanced — evidence quality matters as much as discovery.
-# False positive entity matches can derail investigations.
 CROSS_REFERENCE_WEIGHTS = EFEWeights(risk=0.35, ambiguity=0.30, epistemic=0.35)
-
-# Document analysis: moderate risk aversion, high curiosity.
-# OCR/NLP errors propagate — but unexplored documents are lost leads.
 DOCUMENT_ANALYSIS_WEIGHTS = EFEWeights(risk=0.25, ambiguity=0.30, epistemic=0.45)
-
-# NLP extraction: moderate risk (false entities contaminate collections),
-# high epistemic (new entity discoveries are the core value).
 NLP_EXTRACTION_WEIGHTS = EFEWeights(risk=0.30, ambiguity=0.25, epistemic=0.45)
-
-# Network analysis: balanced — structural insights vs overinterpretation.
 NETWORK_ANALYSIS_WEIGHTS = EFEWeights(risk=0.30, ambiguity=0.35, epistemic=0.35)
-
-# Financial investigation: high risk aversion (money trail errors are
-# defamation risks), moderate curiosity.
 FINANCIAL_INVESTIGATION_WEIGHTS = EFEWeights(risk=0.45, ambiguity=0.25, epistemic=0.30)
-
-# Government accountability: moderate across all — FOIA research is
-# iterative, but false claims about officials carry legal risk.
 GOVERNMENT_ACCOUNTABILITY_WEIGHTS = EFEWeights(risk=0.35, ambiguity=0.30, epistemic=0.35)
-
-# Monitoring: low risk (alerting is non-destructive), high epistemic
-# (the whole point is catching new information early).
 MONITORING_WEIGHTS = EFEWeights(risk=0.15, ambiguity=0.25, epistemic=0.60)
-
-# Verification: highest risk aversion in the system — the purpose of
-# verification is to catch errors before publication.
 VERIFICATION_WEIGHTS = EFEWeights(risk=0.55, ambiguity=0.25, epistemic=0.20)
-
-# Publication/story development: very high risk aversion.
-# Publication decisions are irreversible and carry legal exposure.
 PUBLICATION_WEIGHTS = EFEWeights(risk=0.50, ambiguity=0.30, epistemic=0.20)
-
-# Data quality: high risk (bad data propagates), moderate epistemic.
 DATA_QUALITY_WEIGHTS = EFEWeights(risk=0.40, ambiguity=0.30, epistemic=0.30)
-
-# Digital security: extremely high risk aversion — security failures
-# can endanger sources and compromise investigations.
 DIGITAL_SECURITY_WEIGHTS = EFEWeights(risk=0.60, ambiguity=0.25, epistemic=0.15)
-
-# Default fallback for unclassified domains.
 DEFAULT_WEIGHTS = EFEWeights(risk=0.33, ambiguity=0.34, epistemic=0.33)
 
 
@@ -116,18 +183,10 @@ class EFEScore:
 
 
 class EFECalculator:
-    """Compute Expected Free Energy for candidate investigation policies.
-
-    Parameters
-    ----------
-    default_weights:
-        Fallback weights when none are provided per call.
-    """
+    """Compute Expected Free Energy for candidate investigation policies."""
 
     def __init__(self, default_weights: EFEWeights | None = None) -> None:
         self._default_weights = default_weights or DEFAULT_WEIGHTS
-
-    # -- public API ---------------------------------------------------------
 
     def calculate_efe(
         self,
@@ -138,28 +197,6 @@ class EFECalculator:
         information_gain: float,
         weights: EFEWeights | None = None,
     ) -> EFEScore:
-        """Score a single policy.
-
-        Parameters
-        ----------
-        policy_id:
-            Unique identifier for the candidate policy.
-        predicted_outcome:
-            Dict of predicted state variables after executing the policy.
-        desired_outcome:
-            Dict of target / goal state variables.
-        uncertainty:
-            Scalar representing outcome uncertainty (0 = certain).
-        information_gain:
-            Expected information gain from executing this policy.
-        weights:
-            Per-call weight override; uses *default_weights* when *None*.
-
-        Returns
-        -------
-        EFEScore
-            Decomposed score with total and per-component values.
-        """
         w = weights or self._default_weights
         divergence = self.compute_divergence(predicted_outcome, desired_outcome)
 
@@ -176,24 +213,41 @@ class EFECalculator:
             policy_id=policy_id,
         )
 
-    def select_policy(self, scores: list[EFEScore]) -> EFEScore:
-        """Return the policy with the lowest total EFE.
+    def calculate_efe_from_world_model(
+        self,
+        policy_id: str,
+        world_model: WorldModel,
+        desired_outcome: dict,
+        weights: EFEWeights | None = None,
+    ) -> EFEScore:
+        """Score a policy using the factored world model.
 
-        Raises ``ValueError`` if *scores* is empty.
+        Extracts predicted outcome, uncertainty, and information gain
+        directly from the WorldModel's state factors.
         """
+        predicted = world_model.to_predicted_outcome()
+        uncertainty = world_model.get_uncertainty()
+        uncertain_factors = world_model.get_uncertain_factors()
+        info_gain = (
+            sum(world_model.information_gain_estimate(f.name) for f in uncertain_factors)
+            / max(len(world_model.factors), 1)
+        )
+        return self.calculate_efe(
+            policy_id=policy_id,
+            predicted_outcome=predicted,
+            desired_outcome=desired_outcome,
+            uncertainty=uncertainty,
+            information_gain=info_gain,
+            weights=weights,
+        )
+
+    def select_policy(self, scores: list[EFEScore]) -> EFEScore:
         if not scores:
             raise ValueError("Cannot select from an empty score list")
         return min(scores, key=lambda s: s.total)
 
     @staticmethod
     def compute_divergence(predicted: dict, desired: dict) -> float:
-        """Normalised symmetric difference between two outcome dicts.
-
-        For overlapping keys with numeric values the divergence is the mean
-        absolute difference normalised by the max absolute value (per key).
-        Keys present in only one dict contribute 1.0 each.  The final value
-        is averaged over the union of keys so the result lies in ``[0, 1]``.
-        """
         all_keys = set(predicted) | set(desired)
         if not all_keys:
             return 0.0
