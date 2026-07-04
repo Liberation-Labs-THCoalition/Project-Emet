@@ -52,6 +52,12 @@ from emet.ftm.external.edgar import (
     EDGARClient,
     EDGARConfig,
 )
+from emet.ftm.external.congress import CongressAdapter, CongressConfig
+from emet.ftm.external.courtlistener import (
+    CourtListenerClient,
+    CourtListenerConfig,
+)
+from emet.ftm.external.fec import FECClient, FECConfig
 from emet.ftm.external.converters import (
     aleph_search_to_ftm_list,
     gleif_search_to_ftm_list,
@@ -86,6 +92,9 @@ class FederationConfig:
     enable_gleif: bool = True
     enable_companies_house: bool = True
     enable_edgar: bool = True
+    enable_congress: bool = True
+    enable_fec: bool = True
+    enable_courtlistener: bool = True
 
     # Client configs
     aleph_config: AlephConfig = field(default_factory=AlephConfig)
@@ -95,6 +104,11 @@ class FederationConfig:
     gleif_config: GLEIFConfig = field(default_factory=GLEIFConfig)
     companies_house_config: CompaniesHouseConfig = field(default_factory=CompaniesHouseConfig)
     edgar_config: EDGARConfig = field(default_factory=EDGARConfig)
+    congress_config: CongressConfig = field(default_factory=CongressConfig)
+    fec_config: FECConfig = field(default_factory=FECConfig)
+    courtlistener_config: CourtListenerConfig = field(
+        default_factory=CourtListenerConfig
+    )
 
     # Rate limits
     opencorporates_monthly_limit: int = 200
@@ -136,6 +150,11 @@ class FederationConfig:
             enable_icij=True,
             enable_gleif=True,
             enable_edgar=True,
+            # Congressional disclosures, FEC, and CourtListener are all
+            # free/public — always enabled; keys just raise rate limits.
+            enable_congress=True,
+            enable_fec=True,
+            enable_courtlistener=True,
             aleph_config=AlephConfig(host=aleph_host, api_key=aleph_key) if aleph_host else AlephConfig(),
             yente_config=YenteConfig(api_key=opensanctions_key),
             opencorporates_config=OpenCorporatesConfig(api_token=opencorporates_key),
@@ -143,6 +162,9 @@ class FederationConfig:
             edgar_config=EDGARConfig(
                 user_agent=edgar_agent or EDGARConfig.user_agent,
             ),
+            congress_config=CongressConfig.from_env(),
+            fec_config=FECConfig.from_env(),
+            courtlistener_config=CourtListenerConfig.from_env(),
         )
 
 
@@ -262,6 +284,14 @@ class FederatedSearch:
             self._clients["companies_house"] = CompaniesHouseClient(self._config.companies_house_config)
         if self._config.enable_edgar:
             self._clients["edgar"] = EDGARClient(self._config.edgar_config)
+        if self._config.enable_congress:
+            self._clients["congress"] = CongressAdapter(self._config.congress_config)
+        if self._config.enable_fec:
+            self._clients["fec"] = FECClient(self._config.fec_config)
+        if self._config.enable_courtlistener:
+            self._clients["courtlistener"] = CourtListenerClient(
+                self._config.courtlistener_config
+            )
 
         # Rate limiters
         self._oc_counter = MonthlyCounter(
@@ -470,6 +500,73 @@ class FederatedSearch:
         self._cache.set(cache_key, entities)
         return entities
 
+    async def _search_congress(
+        self, query: str, limit: int, entity_type: str,
+    ) -> list[dict[str, Any]]:
+        """Search congressional financial disclosures by member name."""
+        client = self._clients.get("congress")
+        if not client:
+            return []
+
+        # Congressional disclosures are keyed on members (people) and the
+        # securities they hold — skip pure company/org lookups.
+        if entity_type.lower() in ("company", "organization", "org"):
+            return []
+
+        cache_key = self._cache.make_key(
+            "congress", "search", {"q": query, "limit": limit}
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # search_member is synchronous (reads local scraper output); run it
+        # in a thread so it never blocks the event loop.
+        entities = await asyncio.to_thread(client.search_member, query, limit)
+
+        self._cache.set(cache_key, entities)
+        return entities
+
+    async def _search_fec(
+        self, query: str, limit: int, entity_type: str,
+    ) -> list[dict[str, Any]]:
+        """Search FEC candidates and committees."""
+        client = self._clients.get("fec")
+        if not client:
+            return []
+
+        cache_key = self._cache.make_key("fec", "search", {"q": query, "limit": limit})
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        result = await client.search_entities_ftm(query, limit=limit)
+        entities = result.get("entities", [])
+
+        self._cache.set(cache_key, entities)
+        return entities
+
+    async def _search_courtlistener(
+        self, query: str, limit: int, entity_type: str,
+    ) -> list[dict[str, Any]]:
+        """Search CourtListener / RECAP litigation records."""
+        client = self._clients.get("courtlistener")
+        if not client:
+            return []
+
+        cache_key = self._cache.make_key(
+            "courtlistener", "search", {"q": query, "limit": limit}
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        result = await client.search_dockets_ftm(query, limit=limit)
+        entities = result.get("entities", [])
+
+        self._cache.set(cache_key, entities)
+        return entities
+
     # -- Federated search ---------------------------------------------------
 
     async def search_entity(
@@ -513,6 +610,9 @@ class FederatedSearch:
             "gleif": self._search_gleif,
             "companies_house": self._search_companies_house,
             "edgar": self._search_edgar,
+            "congress": self._search_congress,
+            "fec": self._search_fec,
+            "courtlistener": self._search_courtlistener,
         }
 
         for source_name, method in source_methods.items():

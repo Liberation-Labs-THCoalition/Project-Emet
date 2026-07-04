@@ -268,6 +268,93 @@ class EDGARClient:
             "entities": entities,
         }
 
+    async def fetch_recent_filings(
+        self,
+        form_type: str = "",
+        count: int = 40,
+    ) -> list[EDGARFiling]:
+        """Fetch the real-time EDGAR firehose of newly-accepted filings.
+
+        Uses the ``browse-edgar?action=getcurrent`` Atom feed, which SEC
+        updates continuously as filings are accepted. Optionally filter
+        to a single ``form_type`` (e.g. ``"4"`` for insider trades,
+        ``"SC 13D"`` for beneficial-ownership acquisitions, ``"8-K"``).
+
+        This is the "real-time" monitoring path the batch submissions API
+        cannot provide.
+        """
+        params = {
+            "action": "getcurrent",
+            "type": form_type,
+            "company": "",
+            "dateb": "",
+            "owner": "include",
+            "count": str(count),
+            "output": "atom",
+        }
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds,
+            headers={"User-Agent": self._config.user_agent},
+        ) as client:
+            resp = await client.get(_COMPANY_URL, params=params)
+            resp.raise_for_status()
+            body = resp.text
+
+        return self._parse_current_atom(body)
+
+    @staticmethod
+    def _parse_current_atom(body: str) -> list[EDGARFiling]:
+        """Parse the getcurrent Atom feed into EDGARFiling records."""
+        import re
+        from xml.etree import ElementTree as ET
+
+        ns = {"a": "http://www.w3.org/2005/Atom"}
+        filings: list[EDGARFiling] = []
+        try:
+            root = ET.fromstring(body)
+        except ET.ParseError as exc:
+            logger.warning("EDGAR current-feed parse failed: %s", exc)
+            return filings
+
+        for entry in root.findall("a:entry", ns):
+            title = (entry.findtext("a:title", "", ns) or "").strip()
+            updated = (entry.findtext("a:updated", "", ns) or "").strip()
+            link_el = entry.find("a:link", ns)
+            href = link_el.get("href", "") if link_el is not None else ""
+
+            # Titles look like "8-K - ACME CORP (0000123456) (Filer)".
+            form = title.split(" - ", 1)[0].strip() if " - " in title else ""
+            company = title.split(" - ", 1)[1] if " - " in title else title
+            cik_match = re.search(r"\((\d{6,10})\)", company)
+            cik = cik_match.group(1).zfill(10) if cik_match else ""
+            company_name = re.sub(r"\s*\(.*$", "", company).strip()
+
+            filings.append(
+                EDGARFiling(
+                    filing_type=form,
+                    filing_date=updated[:10],
+                    company_name=company_name,
+                    cik=cik,
+                    document_url=href,
+                    description=title,
+                )
+            )
+        return filings
+
+    async def fetch_recent_filings_ftm(
+        self,
+        form_type: str = "",
+        count: int = 40,
+    ) -> dict[str, Any]:
+        """Real-time recent filings as FtM Document entities."""
+        filings = await self.fetch_recent_filings(form_type, count)
+        entities = [self.filing_to_ftm(f) for f in filings]
+        return {
+            "form_type": form_type or "all",
+            "filing_count": len(filings),
+            "entities": entities,
+        }
+
     @staticmethod
     def company_to_ftm(company: EDGARCompany) -> dict[str, Any]:
         """Convert an EDGAR company to FtM Company entity."""

@@ -162,6 +162,87 @@ class GraphExporter:
 
         return {"nodes": nodes, "links": links}
 
+    # -- JSON-LD -------------------------------------------------------------
+
+    def to_jsonld(self, investigation_id: str = "") -> dict[str, Any]:
+        """Export the graph as JSON-LD (linked data).
+
+        Maps FtM schemas onto schema.org / FtM vocabulary types so the
+        output is interoperable with linked-data tooling, SPARQL stores,
+        and knowledge-graph importers. Ownership/Directorship/Payment
+        relationships become explicit typed objects referencing their
+        endpoints by ``@id``, preserving provenance where present.
+        """
+        # FtM schema -> schema.org-ish @type mapping.
+        type_map = {
+            "Person": "schema:Person",
+            "Company": "schema:Organization",
+            "Organization": "schema:Organization",
+            "LegalEntity": "schema:Organization",
+            "PublicBody": "schema:GovernmentOrganization",
+            "Security": "schema:FinancialProduct",
+            "Document": "schema:CreativeWork",
+        }
+        rel_map = {
+            "Ownership": "ftm:ownershipOf",
+            "Directorship": "ftm:directorOf",
+            "Payment": "ftm:paymentTo",
+            "Membership": "ftm:memberOf",
+            "Representation": "ftm:representationOf",
+            "Interest": "ftm:interestIn",
+        }
+        context = {
+            "schema": "https://schema.org/",
+            "ftm": "https://followthemoney.tech/schema/#",
+            "name": "schema:name",
+            "country": "schema:addressCountry",
+            "identifier": "schema:identifier",
+            "source": "schema:isBasedOn",
+            "confidence": "ftm:confidence",
+        }
+
+        graph_nodes: list[dict[str, Any]] = []
+        for node_id, data in self._graph.nodes(data=True):
+            schema = data.get("schema", "Thing")
+            obj: dict[str, Any] = {
+                "@id": f"emet:{node_id}",
+                "@type": type_map.get(schema, "schema:Thing"),
+                "name": data.get("name", node_id[:12]),
+                "ftm:schema": schema,
+            }
+            if data.get("country"):
+                obj["country"] = data["country"]
+            prov = (data.get("properties") or {}).get("_provenance") if isinstance(
+                data.get("properties"), dict
+            ) else None
+            if isinstance(prov, dict):
+                if prov.get("source"):
+                    obj["source"] = prov["source"]
+                if prov.get("confidence") is not None:
+                    obj["confidence"] = prov["confidence"]
+            graph_nodes.append(obj)
+
+        for u, v, data in self._graph.edges(data=True):
+            schema = data.get("schema", "")
+            rel = {
+                "@id": f"emet:rel:{data.get('entity_id', '') or f'{u}->{v}'}",
+                "@type": rel_map.get(schema, "ftm:relatedTo"),
+                "ftm:schema": schema or "Relationship",
+                "source": {"@id": f"emet:{u}"},
+                "target": {"@id": f"emet:{v}"},
+            }
+            if data.get("share_pct"):
+                rel["ftm:percentage"] = data["share_pct"]
+            graph_nodes.append(rel)
+
+        doc: dict[str, Any] = {
+            "@context": context,
+            "@graph": graph_nodes,
+        }
+        if investigation_id:
+            doc["@id"] = f"emet:investigation:{investigation_id}"
+        return doc
+
     # -- CSV -----------------------------------------------------------------
 
     def to_csv_nodes(self) -> str:

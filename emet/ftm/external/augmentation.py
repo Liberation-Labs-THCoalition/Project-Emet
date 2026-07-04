@@ -100,6 +100,7 @@ class DatasetAugmenter:
 
     def __init__(self, config: AugmentationConfig | None = None) -> None:
         self._config = config or AugmentationConfig()
+        self._fed: Any = None  # lazily-built FederatedSearch
 
     async def augment(
         self,
@@ -193,73 +194,45 @@ class DatasetAugmenter:
 
         Returns list of {entity, score, type} dicts.
 
-        In production, delegates to FederatedSearch / adapter layer.
+        Delegates to the FederatedSearch layer so this uses the same
+        correct, tested client method signatures and FtM converters as
+        the rest of the system. (Earlier revisions called ad-hoc client
+        methods that did not exist — ``YenteClient.match``,
+        ``OpenCorporatesClient.search_companies(per_page=...)`` — and
+        would raise ``AttributeError``/``TypeError`` at runtime.)
         """
-        from emet.ftm.external.adapters import (
-            YenteClient, YenteConfig,
-            OpenCorporatesClient, OpenCorporatesConfig,
-            ICIJClient, ICIJConfig,
-            GLEIFClient, GLEIFConfig,
-        )
+        from emet.ftm.external.federation import FederatedSearch, FederationConfig
+
+        if self._fed is None:
+            self._fed = FederatedSearch(FederationConfig.from_env())
 
         max_results = self._config.max_results_per_source
 
-        if source == "opensanctions":
-            client = YenteClient(YenteConfig())
-            results = await client.match(
-                name=name,
-                schema=schema or "LegalEntity",
-                limit=max_results,
+        entity_type = ""
+        if schema in ("Person",):
+            entity_type = "person"
+        elif schema in ("Company", "Organization", "LegalEntity"):
+            entity_type = "company"
+
+        try:
+            result = await self._fed.search_entity(
+                name,
+                entity_type=entity_type,
+                limit_per_source=max_results,
+                sources=[source],
             )
-            return [
-                {
-                    "entity": r.get("entity", r),
-                    "score": r.get("score", 0.5),
-                    "type": "fuzzy",
-                }
-                for r in results
-            ]
+        except Exception as exc:  # network / source failure — degrade, don't crash
+            logger.warning("Augmentation source %s failed for %s: %s", source, name, exc)
+            return []
 
-        elif source == "opencorporates":
-            client = OpenCorporatesClient(OpenCorporatesConfig())
-            results = await client.search_companies(
-                query=name,
-                per_page=max_results,
-            )
-            return [
-                {
-                    "entity": r,
-                    "score": _simple_name_score(name, _get_name(r)),
-                    "type": "fuzzy",
-                }
-                for r in results
-            ]
-
-        elif source == "icij":
-            client = ICIJClient(ICIJConfig())
-            results = await client.search(query=name, limit=max_results)
-            return [
-                {
-                    "entity": r,
-                    "score": _simple_name_score(name, _get_name(r)),
-                    "type": "fuzzy",
-                }
-                for r in results
-            ]
-
-        elif source == "gleif":
-            client = GLEIFClient(GLEIFConfig())
-            results = await client.search(query=name, limit=max_results)
-            return [
-                {
-                    "entity": r,
-                    "score": _simple_name_score(name, _get_name(r)),
-                    "type": "fuzzy",
-                }
-                for r in results
-            ]
-
-        return []
+        matches: list[dict[str, Any]] = []
+        for entity in result.entities:
+            prov = entity.get("_provenance", {})
+            score = prov.get("match_score")
+            if score is None:
+                score = _simple_name_score(name, _get_name(entity))
+            matches.append({"entity": entity, "score": score, "type": "fuzzy"})
+        return matches
 
 
 # ---------------------------------------------------------------------------

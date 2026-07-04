@@ -47,12 +47,17 @@ logger = logging.getLogger(__name__)
 ETH_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 BTC_ADDRESS_RE = re.compile(r"^(bc1[a-zA-HJ-NP-Z0-9]{25,39}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$")
 TRX_ADDRESS_RE = re.compile(r"^T[a-km-zA-HJ-NP-Z1-9]{33}$")
+# Solana addresses are base58-encoded 32-byte public keys (32–44 chars).
+# Checked AFTER Tron (which is a stricter base58 pattern) to avoid overlap.
+SOL_ADDRESS_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
 
 def detect_chain(address: str) -> str | None:
     """Detect which blockchain an address belongs to.
 
-    Returns ``"ethereum"``, ``"bitcoin"``, ``"tron"``, or ``None``.
+    Returns ``"ethereum"``, ``"bitcoin"``, ``"tron"``, ``"solana"``, or
+    ``None``. Order matters: Tron (``T`` + 33 base58) is checked before
+    Solana because it is a subset of the looser Solana pattern.
     """
     address = address.strip()
     if ETH_ADDRESS_RE.match(address):
@@ -61,6 +66,8 @@ def detect_chain(address: str) -> str | None:
         return "bitcoin"
     if TRX_ADDRESS_RE.match(address):
         return "tron"
+    if SOL_ADDRESS_RE.match(address):
+        return "solana"
     return None
 
 
@@ -620,6 +627,77 @@ def tron_transaction_to_ftm(tx: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Solana (public JSON-RPC + Solscan public API)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SolanaConfig:
+    """Configuration for Solana access.
+
+    Uses the public Solana JSON-RPC endpoint for balances/signatures and
+    Solscan's public API for enriched account/transfer data. Both are
+    free; a Solscan API key raises limits but is not required.
+    """
+    rpc_host: str = "https://api.mainnet-beta.solana.com"
+    solscan_host: str = "https://public-api.solscan.io"
+    solscan_api_key: str = ""
+    timeout_seconds: float = 15.0
+
+
+class SolanaClient:
+    """Async client for the Solana chain."""
+
+    def __init__(self, config: SolanaConfig | None = None) -> None:
+        self._config = config or SolanaConfig()
+
+    async def _rpc(self, method: str, params: list[Any]) -> Any:
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+            resp = await client.post(self._config.rpc_host, json=payload)
+            resp.raise_for_status()
+            return resp.json().get("result")
+
+    async def get_balance(self, address: str) -> dict[str, Any]:
+        """Get the SOL balance (in lamports and SOL) for an account."""
+        result = await self._rpc("getBalance", [address])
+        lamports = 0
+        if isinstance(result, dict):
+            lamports = result.get("value", 0)
+        elif isinstance(result, int):
+            lamports = result
+        return {
+            "address": address,
+            "chain": "solana",
+            "balance_lamports": lamports,
+            "balance_sol": lamports / 1e9,
+        }
+
+    async def get_signatures(self, address: str, limit: int = 25) -> list[dict[str, Any]]:
+        """Get recent transaction signatures touching an account."""
+        result = await self._rpc(
+            "getSignaturesForAddress", [address, {"limit": limit}]
+        )
+        return result or []
+
+    async def get_address_summary(self, address: str) -> dict[str, Any]:
+        """Balance + recent signatures rolled into one summary dict."""
+        summary = await self.get_balance(address)
+        try:
+            sigs = await self.get_signatures(address)
+        except httpx.HTTPError as exc:
+            logger.warning("Solana signatures fetch failed for %s: %s", address, exc)
+            sigs = []
+        summary["transaction_count"] = len(sigs)
+        summary["transactions"] = [
+            {"signature": s.get("signature", ""), "slot": s.get("slot"),
+             "err": s.get("err")}
+            for s in sigs
+        ]
+        return summary
+
+
+# ---------------------------------------------------------------------------
 # Unified BlockchainAdapter
 # ---------------------------------------------------------------------------
 
@@ -630,10 +708,11 @@ class BlockchainConfig:
     etherscan_config: EtherscanConfig = field(default_factory=EtherscanConfig)
     blockstream_config: BlockstreamConfig = field(default_factory=BlockstreamConfig)
     tronscan_config: TronscanConfig = field(default_factory=TronscanConfig)
+    solana_config: SolanaConfig = field(default_factory=SolanaConfig)
 
 
 class BlockchainAdapter:
-    """Unified adapter across ETH, BTC, and Tron chains.
+    """Unified adapter across ETH, BTC, Tron, and Solana chains.
 
     Routes requests to the appropriate chain client and returns
     FtM entities + raw data.
@@ -644,6 +723,7 @@ class BlockchainAdapter:
         self._eth = EtherscanClient(cfg.etherscan_config)
         self._btc = BlockstreamClient(cfg.blockstream_config)
         self._tron = TronscanClient(cfg.tronscan_config)
+        self._sol = SolanaClient(cfg.solana_config)
 
     async def get_eth_address(self, address: str) -> dict[str, Any]:
         """Investigate an Ethereum address."""
@@ -683,3 +763,60 @@ class BlockchainAdapter:
             "entities": [entity] + tx_entities,
             **summary,
         }
+
+    async def get_sol_address(self, address: str) -> dict[str, Any]:
+        """Investigate a Solana address."""
+        summary = await self._sol.get_address_summary(address)
+        entity = crypto_address_to_ftm(address, "solana", summary)
+        return {
+            "address": address,
+            "chain": "solana",
+            "entities": [entity],
+            **summary,
+        }
+
+    async def investigate_address(
+        self, address: str, chain: str = "",
+    ) -> dict[str, Any]:
+        """Chain-agnostic investigation entry point.
+
+        Auto-detects the chain when not given, fetches the explorer
+        summary, and layers on-chain intelligence (mixer/DeFi/exchange
+        labels + risk scoring) via ``crypto_intel``. This is the method
+        the augmentation/clustering layer and MCP tools call.
+        """
+        chain = chain or detect_chain(address) or ""
+        dispatch = {
+            "ethereum": self.get_eth_address,
+            "bitcoin": self.get_btc_address,
+            "tron": self.get_tron_address,
+            "solana": self.get_sol_address,
+        }
+        handler = dispatch.get(chain)
+        if handler is None:
+            return {"address": address, "chain": chain, "error": "unsupported_chain",
+                    "entities": []}
+
+        result = await handler(address)
+
+        # Layer analytic intelligence on top of the raw explorer data.
+        try:
+            from emet.ftm.external.crypto_intel import analyze_chain_activity
+
+            analysis = analyze_chain_activity(address, chain, result)
+            result["intel"] = {
+                "risk_score": analysis.risk_score,
+                "risk_level": analysis.risk_level,
+                "risk_factors": analysis.risk_factors,
+                "mixer_flags": [
+                    {"counterparty": f.counterparty, "label": f.label,
+                     "direction": f.direction, "evidence": f.evidence}
+                    for f in analysis.mixer_flags
+                ],
+                "defi_interactions": analysis.defi_interactions,
+                "exchange_interactions": analysis.exchange_interactions,
+            }
+        except Exception as exc:  # intel is additive — never fail the lookup
+            logger.warning("crypto_intel analysis failed for %s: %s", address, exc)
+
+        return result

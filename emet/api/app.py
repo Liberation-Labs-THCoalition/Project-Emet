@@ -77,6 +77,10 @@ def create_app(
     from emet.api.routes.ws_investigation import router as ws_router
     app.include_router(ws_router)
 
+    # Follow-the-money lookup (TruthStrike integration surface)
+    from emet.api.routes.funding import router as funding_router
+    app.include_router(funding_router)
+
     # Config routes (settings, capabilities)
     try:
         from emet.api.routes.config import router as config_router

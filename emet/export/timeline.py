@@ -162,6 +162,119 @@ class TimelineAnalyzer:
             for e in events
         ]
 
+    def to_html(
+        self,
+        events: list[TimelineEvent],
+        title: str = "Investigation Timeline",
+        patterns: list[TemporalPattern] | None = None,
+    ) -> str:
+        """Render a self-contained, interactive HTML timeline.
+
+        Produces a single offline-openable HTML file: a vertical,
+        chronological timeline with per-event cards coloured by FtM
+        schema, a schema filter, and highlighted bands for any detected
+        temporal patterns (bursts/coincidences). No external assets — all
+        CSS/JS is inlined so it is safe to hand to a journalist or embed.
+        """
+        import html
+        import json as _json
+
+        rows = self.to_json(events)
+        schemas = sorted({r["entity_schema"] for r in rows})
+        pattern_summaries = [
+            {
+                "type": p.pattern_type,
+                "severity": p.severity,
+                "count": len(p.events),
+                "explanation": getattr(p, "explanation", ""),
+            }
+            for p in (patterns or [])
+        ]
+        data_json = _json.dumps(rows)
+        pattern_json = _json.dumps(pattern_summaries)
+        safe_title = html.escape(title)
+
+        # Colour palette by schema (theme-neutral, accessible).
+        return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{safe_title}</title>
+<style>
+  :root {{ color-scheme: light dark; }}
+  body {{ font-family: system-ui, -apple-system, sans-serif; margin: 0;
+    background: #0f1419; color: #e6e6e6; }}
+  header {{ padding: 1.2rem 1.5rem; border-bottom: 1px solid #2a3038; }}
+  h1 {{ font-size: 1.25rem; margin: 0 0 .3rem; }}
+  .controls {{ padding: .8rem 1.5rem; display: flex; gap: .5rem; flex-wrap: wrap;
+    align-items: center; }}
+  select {{ background:#1a1f26; color:#e6e6e6; border:1px solid #2a3038;
+    border-radius:6px; padding:.35rem .6rem; }}
+  .patterns {{ padding: 0 1.5rem; }}
+  .patt {{ display:inline-block; margin:.2rem .3rem .2rem 0; padding:.25rem .6rem;
+    border-radius: 999px; font-size:.8rem; }}
+  .sev-high {{ background:#5a1e1e; color:#ffb4b4; }}
+  .sev-medium {{ background:#5a4a1e; color:#ffe08a; }}
+  .sev-low {{ background:#25405a; color:#a9d3ff; }}
+  .timeline {{ position: relative; margin: 1rem 1.5rem 3rem; padding-left: 1.5rem;
+    border-left: 2px solid #2a3038; max-width: 900px; }}
+  .event {{ position: relative; margin: 0 0 1.1rem; padding: .7rem .9rem;
+    background:#1a1f26; border:1px solid #2a3038; border-radius: 8px; }}
+  .event::before {{ content:''; position:absolute; left:-1.95rem; top:1rem;
+    width:11px; height:11px; border-radius:50%; background: var(--dot,#7aa2f7);
+    border:2px solid #0f1419; }}
+  .event .date {{ font-variant-numeric: tabular-nums; font-weight:600;
+    color:#9ecbff; font-size:.85rem; }}
+  .event .schema {{ font-size:.72rem; text-transform:uppercase; letter-spacing:.04em;
+    opacity:.7; margin-left:.5rem; }}
+  .event .desc {{ margin-top:.25rem; font-size:.92rem; }}
+  .empty {{ padding: 2rem 1.5rem; opacity:.6; }}
+</style></head>
+<body>
+<header><h1>{safe_title}</h1>
+<div style="opacity:.65;font-size:.85rem">{len(rows)} dated events</div></header>
+<div class="patterns" id="patterns"></div>
+<div class="controls">
+  <label for="schemaFilter">Filter by type:</label>
+  <select id="schemaFilter"><option value="">All types</option></select>
+</div>
+<div class="timeline" id="timeline"></div>
+<script>
+const EVENTS = {data_json};
+const PATTERNS = {pattern_json};
+const SCHEMAS = {_json.dumps(schemas)};
+const COLORS = {{Person:'#f7768e',Company:'#7aa2f7',Organization:'#7aa2f7',
+  LegalEntity:'#bb9af7',Security:'#9ece6a',Document:'#e0af68',Ownership:'#ff9e64',
+  Payment:'#73daca'}};
+const sel = document.getElementById('schemaFilter');
+SCHEMAS.forEach(s => {{ const o=document.createElement('option');
+  o.value=s; o.textContent=s; sel.appendChild(o); }});
+const pdiv = document.getElementById('patterns');
+PATTERNS.forEach(p => {{ const span=document.createElement('span');
+  span.className='patt sev-'+(p.severity||'low');
+  span.textContent=p.type+' ×'+p.count+(p.explanation?(' — '+p.explanation):'');
+  pdiv.appendChild(span); }});
+function esc(s) {{ const d=document.createElement('div'); d.textContent=s??'';
+  return d.innerHTML; }}
+function render(filter) {{
+  const tl=document.getElementById('timeline'); tl.innerHTML='';
+  const rows=EVENTS.filter(e=>!filter||e.entity_schema===filter);
+  if(!rows.length) {{ tl.innerHTML='<div class="empty">No events for this filter.</div>';
+    return; }}
+  rows.forEach(e => {{
+    const div=document.createElement('div'); div.className='event';
+    div.style.setProperty('--dot', COLORS[e.entity_schema]||'#7aa2f7');
+    div.innerHTML='<span class="date">'+esc(e.date)+'</span>'+
+      '<span class="schema">'+esc(e.entity_schema)+'</span>'+
+      '<div class="desc">'+esc(e.description)+'</div>';
+    tl.appendChild(div);
+  }});
+}}
+sel.addEventListener('change', () => render(sel.value));
+render('');
+</script>
+</body></html>
+"""
+
     # -- Pattern detection ---------------------------------------------------
 
     def _detect_bursts(self, events: list[TimelineEvent]) -> list[TemporalPattern]:

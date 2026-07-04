@@ -65,6 +65,26 @@ class AuditManifest:
     started_at: str
     closed_at: str
     goal: str = ""
+    # WHO ran the investigation — operator or calling service identity.
+    actor: dict[str, str] = field(default_factory=dict)
+
+
+def _normalize_actor(actor: dict[str, str] | str | None) -> dict[str, str]:
+    """Coerce an actor into a ``{id, type, display}`` dict.
+
+    Accepts a plain string (treated as the id), a dict, or None
+    (anonymous). Recording the actor is what lets the audit trail answer
+    "who searched what, when" — previously only "what/when" was captured.
+    """
+    if actor is None:
+        return {"id": "anonymous", "type": "unknown", "display": "anonymous"}
+    if isinstance(actor, str):
+        return {"id": actor, "type": "operator", "display": actor}
+    return {
+        "id": str(actor.get("id", "anonymous")),
+        "type": str(actor.get("type", "operator")),
+        "display": str(actor.get("display", actor.get("id", "anonymous"))),
+    }
 
 
 class AuditArchive:
@@ -83,14 +103,27 @@ class AuditArchive:
         self._base_dir = Path(base_dir)
         self._session_id: str = ""
         self._goal: str = ""
+        self._actor: dict[str, str] = _normalize_actor(None)
         self._events: list[bytes] = []
         self._started_at: str = ""
         self._is_open: bool = False
 
-    def open(self, session_id: str, goal: str = "") -> None:
-        """Start recording events for an investigation session."""
+    def open(
+        self,
+        session_id: str,
+        goal: str = "",
+        actor: dict[str, str] | str | None = None,
+    ) -> None:
+        """Start recording events for an investigation session.
+
+        ``actor`` identifies who initiated the investigation (an operator
+        id, or a calling service such as ``{"id": "truthstrike",
+        "type": "service"}``). It is stamped on every event and the
+        manifest so the archive is attributable, not just chronological.
+        """
         self._session_id = session_id
         self._goal = goal
+        self._actor = _normalize_actor(actor)
         self._events = []
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._is_open = True
@@ -99,6 +132,7 @@ class AuditArchive:
         self.record_event("session_start", {
             "session_id": session_id,
             "goal": goal,
+            "actor": self._actor,
         })
 
     def record_event(self, event_type: str, payload: dict[str, Any]) -> None:
@@ -120,6 +154,7 @@ class AuditArchive:
             "ts": datetime.now(timezone.utc).isoformat(),
             "type": event_type,
             "session": self._session_id,
+            "actor": self._actor.get("id", "anonymous"),
             "data": payload,
         }
 
@@ -230,6 +265,7 @@ class AuditArchive:
             started_at=self._started_at,
             closed_at=closed_at,
             goal=self._goal,
+            actor=self._actor,
         )
 
         manifest_path = self._base_dir / f"{self._session_id}.manifest.json"
@@ -248,6 +284,7 @@ class AuditArchive:
                 "started_at": manifest.started_at,
                 "closed_at": manifest.closed_at,
                 "goal": manifest.goal,
+                "actor": manifest.actor,
             }, indent=2)
         )
 
@@ -300,6 +337,7 @@ def verify_archive(path: str | Path) -> tuple[bool, AuditManifest | None]:
             started_at=meta["started_at"],
             closed_at=meta["closed_at"],
             goal=meta.get("goal", ""),
+            actor=meta.get("actor", {}),
         )
 
         return is_valid, manifest

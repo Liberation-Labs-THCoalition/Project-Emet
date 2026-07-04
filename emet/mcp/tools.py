@@ -787,24 +787,76 @@ class EmetToolExecutor:
         max_depth: int = 3,
         include_officers: bool = True,
     ) -> dict[str, Any]:
-        """Corporate ownership tracing."""
+        """Corporate ownership tracing — walks the real UBO chain.
+
+        Enriches the target across sources (registries + GLEIF ownership
+        chain), builds a graph, and runs the beneficial-ownership tracer,
+        honouring ``max_depth``. Falls back to a plain entity search if
+        enrichment is unavailable.
+        """
         from emet.ftm.external.federation import FederatedSearch, FederationConfig
 
         federation = self._get_or_create(
             "federation_default",
             lambda: FederatedSearch(config=FederationConfig.from_env()),
         )
-        federated_result = await federation.search_entity(
-            entity_name, entity_type="Company", limit_per_source=10,
-        )
-        entities = federated_result.entities[:10]
+
+        # Deep enrichment surfaces the GLEIF ownership chain and offshore
+        # links needed to actually walk ownership.
+        try:
+            enriched = await federation.enrich_entity(
+                entity_name, entity_type="Company"
+            )
+        except Exception as exc:  # degrade to plain search
+            logger.warning("Ownership enrichment failed for %s: %s", entity_name, exc)
+            enriched = {}
+
+        target = enriched.get("entity")
+        graph_entities: list[dict[str, Any]] = []
+        if target:
+            graph_entities.append(target)
+            graph_entities.extend(enriched.get("ownership_chain", []) or [])
+            graph_entities.extend(enriched.get("offshore_connections", []) or [])
+        else:
+            federated_result = await federation.search_entity(
+                entity_name, entity_type="Company", limit_per_source=10,
+            )
+            graph_entities = federated_result.entities[:10]
+
+        beneficial_owners: list[dict[str, Any]] = []
+        explanation = ""
+        if target and graph_entities:
+            from emet.graph.algorithms import InvestigativeAnalysis
+            from emet.graph.ftm_loader import FtMGraphLoader
+
+            try:
+                graph, _stats = FtMGraphLoader().load(graph_entities)
+                analysis = InvestigativeAnalysis(graph)
+                trace = analysis.trace_beneficial_ownership(
+                    target.get("id", ""), max_depth=max_depth
+                )
+                explanation = trace.explanation
+                beneficial_owners = [
+                    {
+                        "name": bo.name,
+                        "schema": bo.schema,
+                        "effective_pct": bo.effective_pct,
+                        "chain_length": len(bo.path) - 1,
+                        "is_ultimate": bo.is_ultimate,
+                    }
+                    for bo in trace.ultimate_owners
+                ]
+            except Exception as exc:
+                logger.warning("UBO trace failed for %s: %s", entity_name, exc)
 
         return {
             "target": entity_name,
             "max_depth": max_depth,
             "include_officers": include_officers,
-            "entities_found": len(entities),
-            "entities": entities,
+            "entities_found": len(graph_entities),
+            "entities": graph_entities[:10],
+            "beneficial_owners": beneficial_owners,
+            "explanation": explanation,
         }
 
     async def _screen_sanctions(
