@@ -16,6 +16,8 @@ import pytest
 from emet.export.markdown import MarkdownReport, InvestigationReport
 from emet.export.ftm_bundle import FtMBundleExporter
 from emet.export.timeline import TimelineAnalyzer, TimelineEvent
+from emet.graph.ftm_loader import FtMGraphLoader
+from emet.graph.exporters import GraphExporter
 
 
 # ---------------------------------------------------------------------------
@@ -329,3 +331,87 @@ class TestTimelineAnalyzer:
         events = analyzer.extract_events(entities)
         assert len(events) == 1
         assert events[0].date_parsed is None
+
+
+# ---------------------------------------------------------------------------
+# GraphExporter.to_jsonld tests
+# ---------------------------------------------------------------------------
+
+
+class TestJSONLDExport:
+    @pytest.fixture
+    def jsonld_entities(self):
+        """Small, self-contained entity set with a schema unmapped in
+        GraphExporter._JSONLD_TYPE_MAP (BankAccount), so the "ftm:"
+        fallback path is exercised independently of sample_entities."""
+        return [
+            _entity("co-1", "Company", name="Alpha Corp", country="VG"),
+            _entity("person-1", "Person", name="John Doe", country="US"),
+            _entity("acct-1", "BankAccount", name="Alpha Corp Account"),
+            _relationship("own-1", "Ownership", "owner", "person-1", "asset", "co-1",
+                           percentage="100"),
+            _relationship("pay-1", "Payment", "payer", "co-1", "beneficiary", "acct-1",
+                           date="2020-01-01"),
+        ]
+
+    @pytest.fixture
+    def graph(self, jsonld_entities):
+        loader = FtMGraphLoader()
+        graph, _stats = loader.load(jsonld_entities)
+        return graph
+
+    @pytest.fixture
+    def exporter(self, graph):
+        return GraphExporter(graph)
+
+    def test_has_context_and_graph_keys(self, exporter):
+        data = exporter.to_jsonld()
+        assert "@context" in data
+        assert "@graph" in data
+        assert isinstance(data["@graph"], list)
+
+    def test_every_node_produces_one_graph_entry(self, exporter, graph):
+        data = exporter.to_jsonld()
+        node_entries = {
+            entry["@id"]: entry
+            for entry in data["@graph"]
+            if entry["@id"] in graph.nodes
+        }
+        assert set(node_entries.keys()) == set(graph.nodes)
+        for node_id in graph.nodes:
+            assert node_entries[node_id]["@id"] == node_id
+
+    def test_every_edge_produces_a_graph_entry(self, exporter, graph):
+        data = exporter.to_jsonld()
+        node_ids = set(graph.nodes)
+        edge_entries = [e for e in data["@graph"] if e["@id"] not in node_ids]
+
+        assert len(edge_entries) == graph.number_of_edges()
+        for entry in edge_entries:
+            assert entry["@type"].startswith("ftm:")
+            assert "@id" in entry
+            assert entry["ftm:source"] == {"@id": entry["ftm:source"]["@id"]}
+            assert isinstance(entry["ftm:source"], dict)
+            assert isinstance(entry["ftm:target"], dict)
+            assert entry["ftm:source"]["@id"] in node_ids
+            assert entry["ftm:target"]["@id"] in node_ids
+
+    def test_json_serializable(self, exporter):
+        data = exporter.to_jsonld()
+        # Must not raise
+        serialized = json.dumps(data)
+        assert isinstance(serialized, str)
+
+    def test_company_maps_to_schema_organization(self, exporter, graph):
+        data = exporter.to_jsonld()
+        company_id = next(
+            n for n, d in graph.nodes(data=True) if d.get("schema") == "Company"
+        )
+        entry = next(e for e in data["@graph"] if e["@id"] == company_id)
+        assert entry["@type"] == "schema:Organization"
+
+    def test_unmapped_schema_falls_back_to_ftm_prefix(self, exporter):
+        # BankAccount has no schema.org mapping in _JSONLD_TYPE_MAP.
+        data = exporter.to_jsonld()
+        entry = next(e for e in data["@graph"] if e["@id"] == "acct-1")
+        assert entry["@type"] == "ftm:BankAccount"

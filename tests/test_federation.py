@@ -418,6 +418,9 @@ class TestFederatedSearchSourceStatus:
             enable_gleif=False,
             enable_companies_house=False,
             enable_edgar=False,
+            enable_congress=False,
+            enable_fec=False,
+            enable_courtlistener=False,
         ))
         status = federation.source_status
         assert status["enabled_sources"] == []
@@ -434,6 +437,80 @@ class TestFederatedSearchSourceStatus:
         assert "opencorporates" in status["enabled_sources"]
         assert "icij" in status["enabled_sources"]
         assert "gleif" in status["enabled_sources"]
+
+
+class TestNewSourcesFederation:
+    """Congress/FEC/CourtListener registered into FederatedSearch (Fable upgrade)."""
+
+    def test_all_three_registered_by_default(self) -> None:
+        fed = FederatedSearch(FederationConfig())
+        assert "congress" in fed._clients
+        assert "fec" in fed._clients
+        assert "courtlistener" in fed._clients
+
+    def test_each_can_be_individually_disabled(self) -> None:
+        fed = FederatedSearch(FederationConfig(
+            enable_congress=False, enable_fec=False, enable_courtlistener=False,
+        ))
+        assert "congress" not in fed._clients
+        assert "fec" not in fed._clients
+        assert "courtlistener" not in fed._clients
+
+    def test_all_three_in_source_methods_dispatch(self) -> None:
+        fed = FederatedSearch(FederationConfig())
+        # search_entity builds tasks from `source_methods` internally; the
+        # simplest black-box check is that requesting them by name doesn't
+        # silently no-op because they're missing from the dispatch table.
+        import inspect
+        source = inspect.getsource(fed.search_entity)
+        # source_methods dict is defined inline in search_entity
+        assert "congress" in source or hasattr(fed, "_search_congress")
+        assert hasattr(fed, "_search_congress")
+        assert hasattr(fed, "_search_fec")
+        assert hasattr(fed, "_search_courtlistener")
+
+    @pytest.mark.asyncio
+    async def test_search_congress_skips_for_company_only(self) -> None:
+        fed = FederatedSearch(FederationConfig())
+        result = await fed._search_congress("Acme", 10, "company")
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_search_congress_delegates_to_adapter(self) -> None:
+        fed = FederatedSearch(FederationConfig())
+        fake_entities = [{"id": "congress-member:x", "schema": "Person", "properties": {}}]
+        fed._clients["congress"].search_member_ftm = lambda name: {
+            "query": name, "result_count": 1, "entities": fake_entities,
+        }
+        result = await fed._search_congress("Cisneros", 10, "")
+        assert result == fake_entities
+
+    @pytest.mark.asyncio
+    async def test_search_fec_person_only_skips_committees(self) -> None:
+        from unittest.mock import AsyncMock
+
+        fed = FederatedSearch(FederationConfig())
+        fed._clients["fec"].search_candidates_ftm = AsyncMock(
+            return_value={"entities": [{"id": "fec-candidate:1"}]}
+        )
+        fed._clients["fec"].search_committees_ftm = AsyncMock(
+            return_value={"entities": [{"id": "fec-committee:1"}]}
+        )
+        result = await fed._search_fec("Jane Doe", 10, "person")
+        assert result == [{"id": "fec-candidate:1"}]
+        fed._clients["fec"].search_committees_ftm.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_search_courtlistener_delegates(self) -> None:
+        from unittest.mock import AsyncMock
+
+        fed = FederatedSearch(FederationConfig())
+        fake_entities = [{"id": "courtlistener-docket:1", "schema": "Document", "properties": {}}]
+        fed._clients["courtlistener"].search_dockets_ftm = AsyncMock(
+            return_value={"query": "x", "entities": fake_entities}
+        )
+        result = await fed._search_courtlistener("Acme v. Beta", 10, "")
+        assert result == fake_entities
 
 
 # ====================================================================

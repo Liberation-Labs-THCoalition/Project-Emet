@@ -275,6 +275,83 @@ class TestDatasetAugmenter:
 
 
 # ===========================================================================
+# _query_source delegates to FederatedSearch (Fable upgrade regression test)
+# ===========================================================================
+
+
+class TestQuerySourceDelegatesToFederation:
+    """_query_source used to call nonexistent ad-hoc client methods
+    (YenteClient.match, OpenCorporatesClient.search_companies(per_page=...),
+    etc.) that would have raised AttributeError/TypeError at runtime. It now
+    delegates to FederatedSearch, which has the real, tested client APIs."""
+
+    @pytest.mark.asyncio
+    async def test_delegates_to_federated_search_entity(self):
+        from emet.ftm.external.federation import FederatedResult
+
+        augmenter = DatasetAugmenter()
+
+        fake_entity = {
+            "id": "opensanctions-1",
+            "schema": "Person",
+            "properties": {"name": ["John Smith Match"]},
+        }
+        fake_result = FederatedResult(
+            query="John Smith",
+            entity_type="person",
+            entities=[fake_entity],
+            source_stats={"opensanctions": 1},
+            errors={},
+            cache_hits=0,
+            total_time_ms=1.0,
+        )
+
+        mock_federation = AsyncMock()
+        mock_federation.search_entity.return_value = fake_result
+        augmenter._federation = mock_federation
+
+        matches = await augmenter._query_source("John Smith", "Person", "opensanctions")
+
+        mock_federation.search_entity.assert_awaited_once()
+        call_kwargs = mock_federation.search_entity.call_args
+        assert call_kwargs.args[0] == "John Smith"
+        assert call_kwargs.kwargs["sources"] == ["opensanctions"]
+        assert call_kwargs.kwargs["entity_type"] == "person"
+
+        assert len(matches) == 1
+        assert matches[0]["entity"] == fake_entity
+        assert matches[0]["type"] == "fuzzy"
+        assert 0.0 <= matches[0]["score"] <= 1.0
+
+    @pytest.mark.asyncio
+    async def test_company_schema_maps_to_company_entity_type(self):
+        from emet.ftm.external.federation import FederatedResult
+
+        augmenter = DatasetAugmenter()
+        mock_federation = AsyncMock()
+        mock_federation.search_entity.return_value = FederatedResult(
+            query="Acme Corp", entity_type="company", entities=[],
+            source_stats={}, errors={}, cache_hits=0, total_time_ms=1.0,
+        )
+        augmenter._federation = mock_federation
+
+        await augmenter._query_source("Acme Corp", "Company", "opencorporates")
+
+        assert mock_federation.search_entity.call_args.kwargs["entity_type"] == "company"
+
+    def test_get_federation_constructs_real_federated_search_lazily(self):
+        from emet.ftm.external.federation import FederatedSearch
+
+        augmenter = DatasetAugmenter()
+        assert augmenter._federation is None
+
+        federation = augmenter._get_federation()
+        assert isinstance(federation, FederatedSearch)
+        # Second call reuses the same instance rather than rebuilding clients.
+        assert augmenter._get_federation() is federation
+
+
+# ===========================================================================
 # Blockchain clusterer (mocked)
 # ===========================================================================
 

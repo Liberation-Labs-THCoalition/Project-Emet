@@ -115,6 +115,29 @@ class ShellScore:
     risk_level: str  # "low", "medium", "high", "critical"
 
 
+@dataclass
+class BeneficialOwner:
+    """A single owner discovered while tracing an ownership chain."""
+    entity_id: str
+    name: str
+    schema: str
+    effective_pct: float | None   # 0–1, None if unknown/unparseable anywhere in the chain
+    depth: int                    # hops from the target entity
+    path: list[dict[str, str]]    # [{id, name, schema}, ...] from this owner down to the target
+    is_terminal: bool              # True if this owner has no further known owners (a UBO)
+
+
+@dataclass
+class OwnershipTrace:
+    """Result of tracing beneficial ownership up from a target entity."""
+    target_id: str
+    target_name: str
+    owners: list[BeneficialOwner]
+    max_depth_reached: bool
+    cycles_detected: int
+    explanation: str
+
+
 # ---------------------------------------------------------------------------
 # Analysis engine
 # ---------------------------------------------------------------------------
@@ -489,6 +512,190 @@ class InvestigativeAnalysis:
 
         return results
 
+    # -- Beneficial ownership tracing -----------------------------------------
+
+    @staticmethod
+    def _parse_share_pct(raw: Any) -> float | None:
+        """Parse a share/ownership percentage into a 0–1 fraction.
+
+        Accepts the many shapes this value shows up in across FtM sources:
+        ``"50%"``, ``"50"``, ``"50.0"``, ``0.5``, ``["25%"]``. A bare numeric
+        value ``<= 1`` is assumed to already be a fraction (``0.5`` = 50%);
+        anything larger is assumed to be a percentage on a 0–100 scale and is
+        divided by 100. Returns ``None`` when the value is missing or can't
+        be parsed — callers must not silently assume 100% for unknowns.
+        """
+        if isinstance(raw, (list, tuple)):
+            raw = raw[0] if raw else None
+
+        if raw is None or raw == "":
+            return None
+
+        if isinstance(raw, (int, float)):
+            value = float(raw)
+            return value if 0 <= value <= 1 else value / 100.0
+
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                return None
+            had_percent_sign = text.endswith("%")
+            text = text.rstrip("%").strip()
+            try:
+                value = float(text)
+            except ValueError:
+                return None
+            if had_percent_sign:
+                return value / 100.0
+            return value if 0 <= value <= 1 else value / 100.0
+
+        return None
+
+    def trace_beneficial_ownership(
+        self,
+        entity_id: str,
+        max_depth: int = 5,
+        min_effective_pct: float = 0.0,
+    ) -> OwnershipTrace:
+        """Walk incoming Ownership edges to find ultimate beneficial owners.
+
+        Recursively follows ``owner -> asset`` Ownership edges backwards from
+        ``entity_id`` (i.e. incoming Ownership edges), multiplying
+        ``share_pct`` down each chain to compute every owner's **effective
+        stake** in the target. Owners with no further recorded owners are
+        terminal — the ultimate beneficial owners (UBOs).
+
+        Parameters
+        ----------
+        entity_id:
+            The target entity to trace ownership of.
+        max_depth:
+            Maximum number of ownership hops to follow. Bounds runaway
+            traversal on deeply nested or malformed data.
+        min_effective_pct:
+            Drop owners whose effective stake is known and below this
+            threshold (0–1). Owners with an *unknown* effective stake are
+            always kept — an unparseable percentage is a lead, not noise.
+        """
+        if entity_id not in self._graph:
+            return OwnershipTrace(
+                target_id=entity_id,
+                target_name=entity_id[:12],
+                owners=[],
+                max_depth_reached=False,
+                cycles_detected=0,
+                explanation=f"Entity {entity_id} not found in graph.",
+            )
+
+        target_info = self._node_info(entity_id)
+        owners: list[BeneficialOwner] = []
+        max_depth_reached = False
+        cycles_detected = 0
+
+        def _incoming_ownership(node_id: str) -> list[tuple[str, Any]]:
+            """(owner_id, share_pct_raw) pairs for incoming Ownership edges."""
+            results = []
+            for u, _v, _key, data in self._graph.in_edges(node_id, data=True, keys=True):
+                if data.get("schema") == "Ownership":
+                    results.append((u, data.get("share_pct")))
+            return results
+
+        def _walk(
+            node_id: str,
+            depth: int,
+            cumulative_pct: float | None,
+            path_so_far: list[dict[str, str]],
+            visited: frozenset[str],
+        ) -> None:
+            nonlocal max_depth_reached, cycles_detected
+
+            if depth > max_depth:
+                max_depth_reached = True
+                return
+
+            parents = _incoming_ownership(node_id)
+
+            for owner_id, share_raw in parents:
+                if owner_id in visited:
+                    cycles_detected += 1
+                    continue
+
+                share = self._parse_share_pct(share_raw)
+                if cumulative_pct is None or share is None:
+                    # Unknown propagates: if either link in the chain is
+                    # unknown, the effective stake for this owner (and
+                    # everything above it) is unknown too — never assume
+                    # 100% for a missing percentage.
+                    effective = None
+                else:
+                    effective = cumulative_pct * share
+
+                owner_info = self._node_info(owner_id)
+                new_path = [owner_info] + path_so_far
+
+                grandparents = _incoming_ownership(owner_id)
+                truncated_by_depth = bool(grandparents) and depth == max_depth
+                is_terminal = len(grandparents) == 0 or truncated_by_depth
+                if truncated_by_depth:
+                    max_depth_reached = True
+
+                if effective is None or effective >= min_effective_pct:
+                    owners.append(BeneficialOwner(
+                        entity_id=owner_id,
+                        name=owner_info["name"],
+                        schema=owner_info["schema"],
+                        effective_pct=effective,
+                        depth=depth,
+                        path=new_path,
+                        is_terminal=is_terminal,
+                    ))
+
+                if not is_terminal:
+                    _walk(
+                        owner_id,
+                        depth + 1,
+                        effective if effective is not None else cumulative_pct,
+                        new_path,
+                        visited | {owner_id},
+                    )
+
+        _walk(entity_id, 1, 1.0, [target_info], frozenset({entity_id}))
+
+        # Sort: terminal (true UBOs) first, then by effective stake descending
+        # (unknown stakes sort after known ones but are never dropped).
+        owners.sort(
+            key=lambda o: (
+                not o.is_terminal,
+                -(o.effective_pct if o.effective_pct is not None else -1),
+            ),
+        )
+
+        ubo_count = sum(1 for o in owners if o.is_terminal)
+        if not owners:
+            explanation = f"No recorded owners found for {target_info['name']}."
+        else:
+            top = owners[0]
+            pct_str = f"{top.effective_pct:.0%}" if top.effective_pct is not None else "an unknown share of"
+            explanation = (
+                f"Traced {len(owners)} owner(s) of {target_info['name']} across the "
+                f"ownership graph, {ubo_count} of which appear to be ultimate beneficial "
+                f"owners (no further recorded owners). Top owner: {top.name} "
+                f"({top.schema}) holds {pct_str} effectively."
+            )
+            if cycles_detected:
+                explanation += f" {cycles_detected} circular reference(s) were detected and broken."
+            if max_depth_reached:
+                explanation += f" Search was capped at depth {max_depth} — deeper ownership may exist."
+
+        return OwnershipTrace(
+            target_id=entity_id,
+            target_name=target_info["name"],
+            owners=owners,
+            max_depth_reached=max_depth_reached,
+            cycles_detected=cycles_detected,
+            explanation=explanation,
+        )
+
     # -- Structural anomaly detection ----------------------------------------
 
     def find_structural_anomalies(self) -> list[AnomalyResult]:
@@ -542,6 +749,50 @@ class InvestigativeAnalysis:
                         "Verify if this is a legitimate holding company",
                         "Check incorporation dates of owned entities for temporal clustering",
                         "Cross-reference owner against PEP/sanctions lists",
+                    ],
+                ))
+
+        # Fan-in detection: entity owned by 5+ distinct parents
+        for node_id in self._graph.nodes():
+            in_ownership = [
+                (u, v, d) for u, v, _, d in self._graph.in_edges(node_id, data=True, keys=True)
+                if d.get("schema") == "Ownership"
+            ]
+            distinct_owners = {u for u, _, _ in in_ownership}
+            if len(distinct_owners) >= 5:
+                info = self._node_info(node_id)
+                owner_infos = [self._node_info(u) for u in distinct_owners]
+
+                owner_countries = set(
+                    self._graph.nodes[u].get("country", "") for u in distinct_owners
+                )
+                owner_countries.discard("")
+
+                severity = "medium"
+                if len(distinct_owners) >= 10:
+                    severity = "high"
+                if len(owner_countries) >= 3:
+                    severity = "high"
+
+                explanation = (
+                    f"{info['name']} is owned by {len(distinct_owners)} distinct parent entities"
+                )
+                if owner_countries:
+                    explanation += f" spanning {len(owner_countries)} jurisdictions"
+                explanation += (
+                    ". This fan-in pattern is a common signature of pooled special-purpose "
+                    "vehicles (SPVs) or layering hubs used to obscure true ownership."
+                )
+
+                anomalies.append(AnomalyResult(
+                    anomaly_type="fan_in_ownership",
+                    entities=[info] + owner_infos[:5],
+                    severity=severity,
+                    explanation=explanation,
+                    follow_up=[
+                        "Trace beneficial ownership through each parent to find the ultimate owner(s)",
+                        "Check whether parents share directors, addresses, or registered agents",
+                        "Cross-reference all owners against PEP/sanctions lists",
                     ],
                 ))
 

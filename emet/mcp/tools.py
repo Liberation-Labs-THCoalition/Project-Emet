@@ -787,25 +787,90 @@ class EmetToolExecutor:
         max_depth: int = 3,
         include_officers: bool = True,
     ) -> dict[str, Any]:
-        """Corporate ownership tracing."""
+        """Corporate ownership tracing.
+
+        Federated-searches the target, enriches it (GLEIF ownership chain +
+        sanctions), builds a graph from everything found, and actually walks
+        the ownership chain via InvestigativeAnalysis.trace_beneficial_ownership
+        — previously this accepted ``max_depth`` but ignored it entirely and
+        never walked a chain, just returning raw federated search hits.
+        """
+        from emet.graph.engine import GraphEngine
         from emet.ftm.external.federation import FederatedSearch, FederationConfig
 
         federation = self._get_or_create(
             "federation_default",
             lambda: FederatedSearch(config=FederationConfig.from_env()),
         )
+
         federated_result = await federation.search_entity(
             entity_name, entity_type="Company", limit_per_source=10,
         )
-        entities = federated_result.entities[:10]
+        found_entities = federated_result.entities[:10]
 
-        return {
+        if not found_entities:
+            return {
+                "target": entity_name,
+                "max_depth": max_depth,
+                "entities_found": 0,
+                "owners": [],
+                "explanation": f"No entities found matching '{entity_name}'.",
+            }
+
+        target_entity = found_entities[0]
+        target_id = target_entity.get("id", "")
+
+        enrichment = await federation.enrich_entity(entity_name, entity_type="Company")
+        ownership_chain = enrichment.get("ownership_chain", [])
+
+        all_entities = list(found_entities) + [
+            e for e in ownership_chain if e.get("id") not in {fe.get("id") for fe in found_entities}
+        ]
+
+        engine = self._get_or_create("graph_engine", GraphEngine)
+        graph_result = engine.build_from_entities(all_entities)
+
+        trace = graph_result.analysis.trace_beneficial_ownership(
+            target_id, max_depth=max_depth,
+        )
+
+        owners = [
+            {
+                "entity_id": o.entity_id,
+                "name": o.name,
+                "schema": o.schema,
+                "effective_pct": o.effective_pct,
+                "depth": o.depth,
+                "is_ultimate_beneficial_owner": o.is_terminal,
+                "path": o.path,
+            }
+            for o in trace.owners
+        ]
+
+        result: dict[str, Any] = {
             "target": entity_name,
+            "target_id": target_id,
             "max_depth": max_depth,
-            "include_officers": include_officers,
-            "entities_found": len(entities),
-            "entities": entities,
+            "entities_found": len(found_entities),
+            "node_count": graph_result.node_count,
+            "edge_count": graph_result.edge_count,
+            "owners": owners,
+            "cycles_detected": trace.cycles_detected,
+            "max_depth_reached": trace.max_depth_reached,
+            "explanation": trace.explanation,
         }
+
+        if include_officers:
+            director_edges = [
+                (u, v, d) for u, v, _, d in graph_result.graph.in_edges(target_id, data=True, keys=True)
+                if target_id in graph_result.graph and d.get("schema") == "Directorship"
+            ] if target_id in graph_result.graph else []
+            result["officers"] = [
+                graph_result.graph.nodes[u].get("name", u)
+                for u, _, _ in director_edges
+            ]
+
+        return result
 
     async def _screen_sanctions(
         self,

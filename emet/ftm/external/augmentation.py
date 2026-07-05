@@ -100,6 +100,7 @@ class DatasetAugmenter:
 
     def __init__(self, config: AugmentationConfig | None = None) -> None:
         self._config = config or AugmentationConfig()
+        self._federation = None  # lazily constructed; see _get_federation()
 
     async def augment(
         self,
@@ -183,6 +184,18 @@ class DatasetAugmenter:
         result.enriched_count = len(all_enriched)
         return result
 
+    def _get_federation(self):
+        """Lazily construct the shared FederatedSearch instance.
+
+        Constructed lazily (rather than in __init__) so tests can patch
+        ``_query_source`` directly without ever touching the network layer,
+        and so DatasetAugmenter() stays cheap to instantiate.
+        """
+        if self._federation is None:
+            from emet.ftm.external.federation import FederatedSearch, FederationConfig
+            self._federation = FederatedSearch(FederationConfig.from_env())
+        return self._federation
+
     async def _query_source(
         self,
         name: str,
@@ -193,73 +206,37 @@ class DatasetAugmenter:
 
         Returns list of {entity, score, type} dicts.
 
-        In production, delegates to FederatedSearch / adapter layer.
+        Delegates to FederatedSearch, which has the correct, tested client
+        signatures and FtM converters for every source. This previously
+        called ad-hoc, nonexistent methods directly on the raw clients
+        (``YenteClient.match``, ``OpenCorporatesClient.search_companies(...,
+        per_page=...)``, etc.) — none of which matched the real client APIs
+        in emet/ftm/external/adapters.py, so every call here would have
+        raised at runtime despite being fully covered by mocked unit tests
+        that stubbed this method out entirely.
         """
-        from emet.ftm.external.adapters import (
-            YenteClient, YenteConfig,
-            OpenCorporatesClient, OpenCorporatesConfig,
-            ICIJClient, ICIJConfig,
-            GLEIFClient, GLEIFConfig,
+        entity_type = ""
+        if schema in ("Person",):
+            entity_type = "person"
+        elif schema in ("Company", "LegalEntity", "Organization"):
+            entity_type = "company"
+
+        federation = self._get_federation()
+        result = await federation.search_entity(
+            name,
+            entity_type=entity_type,
+            limit_per_source=self._config.max_results_per_source,
+            sources=[source],
         )
 
-        max_results = self._config.max_results_per_source
-
-        if source == "opensanctions":
-            client = YenteClient(YenteConfig())
-            results = await client.match(
-                name=name,
-                schema=schema or "LegalEntity",
-                limit=max_results,
-            )
-            return [
-                {
-                    "entity": r.get("entity", r),
-                    "score": r.get("score", 0.5),
-                    "type": "fuzzy",
-                }
-                for r in results
-            ]
-
-        elif source == "opencorporates":
-            client = OpenCorporatesClient(OpenCorporatesConfig())
-            results = await client.search_companies(
-                query=name,
-                per_page=max_results,
-            )
-            return [
-                {
-                    "entity": r,
-                    "score": _simple_name_score(name, _get_name(r)),
-                    "type": "fuzzy",
-                }
-                for r in results
-            ]
-
-        elif source == "icij":
-            client = ICIJClient(ICIJConfig())
-            results = await client.search(query=name, limit=max_results)
-            return [
-                {
-                    "entity": r,
-                    "score": _simple_name_score(name, _get_name(r)),
-                    "type": "fuzzy",
-                }
-                for r in results
-            ]
-
-        elif source == "gleif":
-            client = GLEIFClient(GLEIFConfig())
-            results = await client.search(query=name, limit=max_results)
-            return [
-                {
-                    "entity": r,
-                    "score": _simple_name_score(name, _get_name(r)),
-                    "type": "fuzzy",
-                }
-                for r in results
-            ]
-
-        return []
+        return [
+            {
+                "entity": entity,
+                "score": _simple_name_score(name, _get_name(entity)),
+                "type": "fuzzy",
+            }
+            for entity in result.entities
+        ]
 
 
 # ---------------------------------------------------------------------------

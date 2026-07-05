@@ -44,6 +44,17 @@ from emet.security.shield import (
     ShieldDecision,
     ShieldVerdict,
 )
+from emet.security.target_policy import (
+    ORGANIZATION_SCHEMAS,
+    PUBLIC_ROLE_PROPERTIES,
+    PUBLIC_ROLE_SOURCES,
+    PublicInterestOverride,
+    TargetDecision,
+    TargetType,
+    check_target,
+    classify_target,
+    filter_targets,
+)
 
 __all__ = [
     # intent_capsule
@@ -81,4 +92,14 @@ __all__ = [
     "InvariantChecker",
     "InvariantContext",
     "InvariantResult",
+    # target_policy
+    "ORGANIZATION_SCHEMAS",
+    "PUBLIC_ROLE_PROPERTIES",
+    "PUBLIC_ROLE_SOURCES",
+    "PublicInterestOverride",
+    "TargetDecision",
+    "TargetType",
+    "check_target",
+    "classify_target",
+    "filter_targets",
 ]

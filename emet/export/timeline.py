@@ -16,6 +16,7 @@ creation or political appointment dates.
 
 from __future__ import annotations
 
+import html
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -38,6 +39,23 @@ DATE_PROPERTIES = [
     "birthDate",
     "deathDate",
 ]
+
+# Fallback color palette for the HTML timeline's schema badges. Assigned
+# round-robin to whatever distinct entity_schema values show up in a given
+# timeline — doesn't need to match the graph visualizer's palette exactly,
+# just needs to be visually distinct per schema.
+_HTML_SCHEMA_PALETTE = [
+    "#3498DB", "#E74C3C", "#E67E22", "#9B59B6", "#1ABC9C",
+    "#2C3E50", "#27AE60", "#F39C12", "#16A085", "#8E44AD",
+    "#2ECC71", "#34495E", "#C0392B", "#7F8C8D",
+]
+
+# Severity -> band color for pattern highlighting in the HTML timeline.
+_HTML_SEVERITY_COLORS = {
+    "low": "#f1c40f",
+    "medium": "#e67e22",
+    "high": "#e74c3c",
+}
 
 
 @dataclass
@@ -162,6 +180,209 @@ class TimelineAnalyzer:
             for e in events
         ]
 
+    def to_html(self, entities: list[dict[str, Any]]) -> str:
+        """Render an interactive, self-contained, fully-offline HTML timeline.
+
+        Calls ``self.extract_events(entities)`` and ``self.detect_patterns(entities)``
+        internally (same inputs the existing ``to_markdown``/``to_json`` helpers
+        take), then returns a single complete HTML document string (a full
+        ``<!DOCTYPE html>...<html>...</html>`` — this is meant to be written
+        directly to a ``.html`` file and opened in a browser, NOT embedded as a
+        page fragment) with:
+
+          - A vertical timeline: one entry per ``TimelineEvent``, sorted
+            chronologically (already sorted by ``extract_events``), each showing
+            date, entity_name, entity_schema (as a small colored badge), and
+            description.
+          - A schema filter: checkboxes listing every distinct entity_schema
+            present in the events, with inline vanilla JS (no external
+            libraries, no CDN links) that shows/hides timeline entries when the
+            filter changes. Works fully offline (file:// URL, no network
+            requests of any kind).
+          - Pattern bands: for each ``TemporalPattern`` from
+            ``detect_patterns()``, entries whose date falls within
+            ``[pattern.events[0].date, pattern.events[-1].date]`` get a
+            severity-colored highlight (yellow/orange/red for
+            low/medium/high), with the pattern's ``explanation`` shown both as
+            a hover tooltip on the highlighted rows and in a "Detected
+            patterns" panel above the timeline.
+
+        Returns a minimal valid HTML page saying "No dated events found." if no
+        dated events are extracted (handles the empty-events case gracefully).
+        """
+        events = self.extract_events(entities)
+        if not events:
+            return self._empty_timeline_html()
+
+        patterns = self.detect_patterns(entities)
+
+        schemas = sorted({e.entity_schema or "Unknown" for e in events})
+        schema_colors = {
+            schema: _HTML_SCHEMA_PALETTE[i % len(_HTML_SCHEMA_PALETTE)]
+            for i, schema in enumerate(schemas)
+        }
+        severity_rank = {"low": 0, "medium": 1, "high": 2}
+
+        row_chunks: list[str] = []
+        current_year = ""
+        for event in events:
+            year = event.date[:4] if len(event.date) >= 4 else "Unknown"
+            if year != current_year:
+                current_year = year
+                row_chunks.append(f'<div class="year-header">{html.escape(year)}</div>')
+
+            schema = event.entity_schema or "Unknown"
+            color = schema_colors[schema]
+
+            matched = [p for p in patterns if self._event_in_pattern_range(event, p)]
+            band_class = ""
+            title_attr = ""
+            if matched:
+                top = max(matched, key=lambda p: severity_rank.get(p.severity, 0))
+                band_class = f" band-{top.severity}"
+                tooltip = " | ".join(p.explanation for p in matched)
+                title_attr = f' title="{html.escape(tooltip)}"'
+
+            row_chunks.append(
+                f'<div class="event-row{band_class}" data-schema="{html.escape(schema)}"{title_attr}>'
+                f'<div class="event-date">{html.escape(event.date)}</div>'
+                f'<div class="event-badge" style="background:{color}">{html.escape(schema)}</div>'
+                f'<div class="event-body">'
+                f'<div class="event-name">{html.escape(event.entity_name)}</div>'
+                f'<div class="event-desc">{html.escape(event.description)}</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+        filter_chunks = [
+            f'<label class="filter-item">'
+            f'<input type="checkbox" class="schema-filter" value="{html.escape(schema)}" checked> '
+            f'<span class="swatch" style="background:{schema_colors[schema]}"></span>'
+            f'{html.escape(schema)}</label>'
+            for schema in schemas
+        ]
+
+        patterns_html = ""
+        if patterns:
+            pattern_items = "".join(
+                f'<li class="pattern-item pattern-{p.severity}">'
+                f'<span class="pattern-severity">{html.escape(p.severity.upper())}</span> '
+                f'<span class="pattern-type">{html.escape(p.pattern_type)}</span>: '
+                f'{html.escape(p.explanation)}</li>'
+                for p in patterns
+            )
+            patterns_html = (
+                '<div class="patterns-panel">'
+                '<h2>Detected patterns</h2>'
+                f'<ul>{pattern_items}</ul>'
+                '</div>'
+            )
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Investigation Timeline</title>
+<style>
+  :root {{ color-scheme: light dark; }}
+  body {{
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 1.5rem 2rem 3rem;
+    background: #f7f7f9; color: #1c1c1e;
+  }}
+  h1 {{ margin-top: 0; }}
+  .controls {{
+    background: #fff; border: 1px solid #ddd; border-radius: 8px;
+    padding: 0.75rem 1rem; margin-bottom: 1rem;
+  }}
+  .filter-item {{
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    margin: 0.25rem 0.75rem 0.25rem 0; cursor: pointer; font-size: 0.9rem;
+  }}
+  .swatch {{
+    display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px;
+  }}
+  .patterns-panel {{
+    background: #fffbe6; border: 1px solid #e6d68a; border-radius: 8px;
+    padding: 0.75rem 1rem; margin-bottom: 1.25rem;
+  }}
+  .patterns-panel h2 {{ margin-top: 0; font-size: 1.05rem; }}
+  .patterns-panel ul {{ margin: 0; padding-left: 1.2rem; }}
+  .pattern-item {{ margin-bottom: 0.4rem; font-size: 0.9rem; }}
+  .pattern-severity {{
+    font-weight: 700; font-size: 0.75rem; padding: 0.05rem 0.4rem;
+    border-radius: 4px; color: #fff;
+  }}
+  .pattern-low .pattern-severity {{ background: {_HTML_SEVERITY_COLORS["low"]}; }}
+  .pattern-medium .pattern-severity {{ background: {_HTML_SEVERITY_COLORS["medium"]}; }}
+  .pattern-high .pattern-severity {{ background: {_HTML_SEVERITY_COLORS["high"]}; }}
+  .timeline {{ display: flex; flex-direction: column; }}
+  .year-header {{
+    font-size: 1.1rem; font-weight: 700; margin: 1rem 0 0.4rem; color: #555;
+  }}
+  .event-row {{
+    display: flex; align-items: flex-start; gap: 0.75rem;
+    background: #fff; border: 1px solid #e2e2e6; border-radius: 6px;
+    padding: 0.5rem 0.75rem; margin-bottom: 0.4rem;
+    border-left: 4px solid transparent;
+  }}
+  .event-row.band-low {{ background: rgba(241, 196, 15, 0.15); border-left-color: {_HTML_SEVERITY_COLORS["low"]}; }}
+  .event-row.band-medium {{ background: rgba(230, 126, 34, 0.15); border-left-color: {_HTML_SEVERITY_COLORS["medium"]}; }}
+  .event-row.band-high {{ background: rgba(231, 76, 60, 0.15); border-left-color: {_HTML_SEVERITY_COLORS["high"]}; }}
+  .event-date {{ flex: 0 0 auto; font-variant-numeric: tabular-nums; color: #555; min-width: 6.5rem; }}
+  .event-badge {{
+    flex: 0 0 auto; color: #fff; font-size: 0.72rem; font-weight: 700;
+    padding: 0.15rem 0.45rem; border-radius: 4px; white-space: nowrap;
+  }}
+  .event-body {{ flex: 1 1 auto; }}
+  .event-name {{ font-weight: 600; }}
+  .event-desc {{ color: #444; font-size: 0.9rem; }}
+  .event-row[style*="display: none"] {{ display: none; }}
+  @media (prefers-color-scheme: dark) {{
+    body {{ background: #1c1c1e; color: #f2f2f2; }}
+    .controls, .event-row {{ background: #2c2c2e; border-color: #3a3a3c; }}
+    .patterns-panel {{ background: #3a331a; border-color: #6b5d2b; }}
+    .event-desc {{ color: #c7c7cc; }}
+    .event-date {{ color: #aeaeb2; }}
+  }}
+</style>
+</head>
+<body>
+<h1>Investigation Timeline</h1>
+<div class="controls">
+  <strong>Filter by schema:</strong><br>
+  {''.join(filter_chunks)}
+</div>
+{patterns_html}
+<div class="timeline" id="timeline">
+{''.join(row_chunks)}
+</div>
+<script>
+(function () {{
+  var checkboxes = document.querySelectorAll('.schema-filter');
+  var rows = document.querySelectorAll('.event-row');
+
+  function applyFilter() {{
+    var active = {{}};
+    checkboxes.forEach(function (cb) {{
+      if (cb.checked) {{ active[cb.value] = true; }}
+    }});
+    rows.forEach(function (row) {{
+      var schema = row.getAttribute('data-schema');
+      row.style.display = active[schema] ? '' : 'none';
+    }});
+  }}
+
+  checkboxes.forEach(function (cb) {{
+    cb.addEventListener('change', applyFilter);
+  }});
+
+  applyFilter();
+}})();
+</script>
+</body>
+</html>"""
+
     # -- Pattern detection ---------------------------------------------------
 
     def _detect_bursts(self, events: list[TimelineEvent]) -> list[TemporalPattern]:
@@ -266,6 +487,26 @@ class TimelineAnalyzer:
         return patterns
 
     # -- Helpers -------------------------------------------------------------
+
+    @staticmethod
+    def _empty_timeline_html() -> str:
+        """Minimal valid HTML page for the empty-events case."""
+        return (
+            "<!DOCTYPE html>\n"
+            '<html lang="en"><head><meta charset="utf-8">'
+            "<title>Investigation Timeline</title></head>"
+            "<body><p>No dated events found.</p></body></html>"
+        )
+
+    @staticmethod
+    def _event_in_pattern_range(event: TimelineEvent, pattern: TemporalPattern) -> bool:
+        """Check whether an event's date falls within a pattern's date range."""
+        if not pattern.events:
+            return False
+        start, end = pattern.events[0], pattern.events[-1]
+        if event.date_parsed is not None and start.date_parsed is not None and end.date_parsed is not None:
+            return start.date_parsed <= event.date_parsed <= end.date_parsed
+        return start.date <= event.date <= end.date
 
     @staticmethod
     def _parse_date(date_str: str) -> datetime | None:

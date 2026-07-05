@@ -2,7 +2,7 @@
 
 Captures every tool call (full args + full result), every LLM prompt and
 response, every reasoning step, and all session metadata in a compressed,
-integrity-verified local archive.
+integrity-verified local archive — who searched what, when.
 
 Unlike CMA (which is lossy by design for active recall), the audit archive
 is a complete forensic record.  Nothing is summarized or discarded.
@@ -65,6 +65,7 @@ class AuditManifest:
     started_at: str
     closed_at: str
     goal: str = ""
+    actor: dict[str, Any] = field(default_factory=dict)
 
 
 class AuditArchive:
@@ -83,14 +84,34 @@ class AuditArchive:
         self._base_dir = Path(base_dir)
         self._session_id: str = ""
         self._goal: str = ""
+        self._actor: dict[str, Any] = {}
         self._events: list[bytes] = []
         self._started_at: str = ""
         self._is_open: bool = False
 
-    def open(self, session_id: str, goal: str = "") -> None:
-        """Start recording events for an investigation session."""
+    def open(
+        self,
+        session_id: str,
+        goal: str = "",
+        actor: dict[str, Any] | None = None,
+    ) -> None:
+        """Start recording events for an investigation session.
+
+        Parameters
+        ----------
+        session_id:
+            Unique identifier for this investigation session.
+        goal:
+            The investigation's stated objective.
+        actor:
+            Who is running this investigation, e.g. ``{"id": "truthstrike",
+            "type": "service"}`` or ``{"id": "operator-jane", "type":
+            "human"}``. No fixed schema is enforced — whatever is passed is
+            recorded verbatim. Defaults to an empty dict.
+        """
         self._session_id = session_id
         self._goal = goal
+        self._actor = actor or {}
         self._events = []
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._is_open = True
@@ -99,6 +120,7 @@ class AuditArchive:
         self.record_event("session_start", {
             "session_id": session_id,
             "goal": goal,
+            "actor": self._actor,
         })
 
     def record_event(self, event_type: str, payload: dict[str, Any]) -> None:
@@ -120,6 +142,7 @@ class AuditArchive:
             "ts": datetime.now(timezone.utc).isoformat(),
             "type": event_type,
             "session": self._session_id,
+            "actor": self._actor,
             "data": payload,
         }
 
@@ -230,6 +253,7 @@ class AuditArchive:
             started_at=self._started_at,
             closed_at=closed_at,
             goal=self._goal,
+            actor=self._actor,
         )
 
         manifest_path = self._base_dir / f"{self._session_id}.manifest.json"
@@ -248,6 +272,7 @@ class AuditArchive:
                 "started_at": manifest.started_at,
                 "closed_at": manifest.closed_at,
                 "goal": manifest.goal,
+                "actor": manifest.actor,
             }, indent=2)
         )
 
@@ -300,6 +325,7 @@ def verify_archive(path: str | Path) -> tuple[bool, AuditManifest | None]:
             started_at=meta["started_at"],
             closed_at=meta["closed_at"],
             goal=meta.get("goal", ""),
+            actor=meta.get("actor", {}),
         )
 
         return is_valid, manifest

@@ -73,6 +73,10 @@ def create_app(
     from emet.api.routes.investigation import router as investigation_router
     app.include_router(investigation_router)
 
+    # Funding lookups (TruthStrike "who funds this outlet?" integration)
+    from emet.api.routes.funding import router as funding_router
+    app.include_router(funding_router)
+
     # WebSocket for live investigation streaming
     from emet.api.routes.ws_investigation import router as ws_router
     app.include_router(ws_router)

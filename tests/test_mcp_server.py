@@ -198,6 +198,81 @@ class TestToolExecutor:
             mock_search.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_trace_ownership_walks_real_chain(self):
+        """trace_ownership used to ignore max_depth and never walk a chain —
+        it now builds a graph and calls trace_beneficial_ownership()."""
+        target_entity = {
+            "id": "target-co",
+            "schema": "Company",
+            "properties": {"name": ["Target Co"]},
+        }
+        owner_entity = {
+            "id": "owner-co",
+            "schema": "Company",
+            "properties": {"name": ["Owner Holdco"]},
+        }
+        ownership_rel = {
+            "id": "own-rel-1",
+            "schema": "Ownership",
+            "properties": {
+                "owner": ["owner-co"],
+                "asset": ["target-co"],
+                "percentage": ["75%"],
+            },
+        }
+        mock_federated = FederatedResult(
+            query="Target Co", entity_type="Company", entities=[target_entity],
+            source_stats={}, errors={}, cache_hits=0, total_time_ms=0, queried_at="",
+        )
+        mock_enrichment = {
+            "entity": target_entity,
+            "sanctions_matches": [],
+            "offshore_connections": [],
+            "ownership_chain": [owner_entity, ownership_rel],
+            "sources_checked": [],
+        }
+        with patch(
+            "emet.ftm.external.federation.FederatedSearch.search_entity",
+            new_callable=AsyncMock,
+            return_value=mock_federated,
+        ), patch(
+            "emet.ftm.external.federation.FederatedSearch.enrich_entity",
+            new_callable=AsyncMock,
+            return_value=mock_enrichment,
+        ):
+            result = await self.executor.execute(
+                "trace_ownership", {"entity_name": "Target Co", "max_depth": 3},
+            )
+
+        assert result["isError"] is False
+        raw = result["_raw"]
+        assert raw["target_id"] == "target-co"
+        assert len(raw["owners"]) == 1
+        assert raw["owners"][0]["entity_id"] == "owner-co"
+        assert raw["owners"][0]["effective_pct"] == pytest.approx(0.75)
+        assert raw["owners"][0]["is_ultimate_beneficial_owner"] is True
+
+    @pytest.mark.asyncio
+    async def test_trace_ownership_no_entities_found(self):
+        mock_federated = FederatedResult(
+            query="Nobody Inc", entity_type="Company", entities=[],
+            source_stats={}, errors={}, cache_hits=0, total_time_ms=0, queried_at="",
+        )
+        with patch(
+            "emet.ftm.external.federation.FederatedSearch.search_entity",
+            new_callable=AsyncMock,
+            return_value=mock_federated,
+        ):
+            result = await self.executor.execute(
+                "trace_ownership", {"entity_name": "Nobody Inc"},
+            )
+
+        assert result["isError"] is False
+        raw = result["_raw"]
+        assert raw["entities_found"] == 0
+        assert raw["owners"] == []
+
+    @pytest.mark.asyncio
     async def test_osint_recon_dispatches(self):
         """Test that osint_recon calls SpiderFootClient."""
         mock_result = {

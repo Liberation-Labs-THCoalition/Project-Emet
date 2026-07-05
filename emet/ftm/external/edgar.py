@@ -21,6 +21,8 @@ Reference: https://efts.sec.gov/LATEST/search-index?q=
 from __future__ import annotations
 
 import logging
+import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,6 +35,20 @@ _COMPANY_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions"
 _FULLTEXT_URL = "https://efts.sec.gov/LATEST/search-index"
 _SEARCH_API = "https://efts.sec.gov/LATEST/search-index"
+_CURRENT_EVENTS_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
+
+# Atom feed namespace used by the EDGAR "getcurrent" firehose.
+_ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
+
+# "4 - ACME CORP (0001234567) (Reporting)" -> form="4", company="ACME CORP", cik="0001234567"
+# Note the separator is " - " (whitespace on both sides) rather than a bare "-", since form
+# types like "8-K" or "SC 13D" may themselves contain hyphens/spaces.
+_TITLE_RE = re.compile(r"^\s*(?P<form>.+?)\s+-\s+(?P<company>.+?)\s*\((?P<cik>\d{1,10})\)")
+# The <summary> text is HTML that ElementTree unescapes into plain text containing literal
+# tags, e.g. "<b>Filed:</b> 2024-03-15 <b>AccNo:</b> 0001234567-24-000001 ..." -- tolerate the
+# tags being present or already stripped.
+_FILED_RE = re.compile(r"Filed:\s*(?:</b>)?\s*(?P<date>\d{4}-\d{2}-\d{2})", re.IGNORECASE)
+_ACCNO_RE = re.compile(r"AccNo:\s*(?:</b>)?\s*(?P<acc>\d{10}-\d{2}-\d{6})", re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +251,99 @@ class EDGARClient:
 
         return filings
 
+    async def fetch_recent_filings(
+        self,
+        forms: list[str] | None = None,
+        count: int = 40,
+    ) -> list[EDGARFiling]:
+        """Fetch the real-time EDGAR 'getcurrent' Atom firehose of the latest filings
+        across all filers, optionally filtered to specific form types.
+
+        The `getcurrent` endpoint only accepts a single `type` param per request, so when
+        multiple `forms` are given this fetches once per form and merges the results. If
+        `forms` is None/empty, does a single fetch with type='' to get all forms.
+        """
+        form_list = forms or [""]
+
+        all_filings: list[EDGARFiling] = []
+        seen_accessions: set[str] = set()
+
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds,
+            headers=self._headers,
+        ) as client:
+            for form in form_list:
+                params = {
+                    "action": "getcurrent",
+                    "type": form,
+                    "company": "",
+                    "dateb": "",
+                    "owner": "include",
+                    "count": str(count),
+                    "output": "atom",
+                }
+                try:
+                    resp = await client.get(_CURRENT_EVENTS_URL, params=params)
+                    resp.raise_for_status()
+                    root = ET.fromstring(resp.text)
+                except (httpx.HTTPError, ET.ParseError) as e:
+                    logger.warning("EDGAR current-events fetch failed for form '%s': %s", form, e)
+                    continue
+
+                for entry in root.findall("atom:entry", _ATOM_NS):
+                    filing = self._parse_current_event_entry(entry)
+                    if filing is None:
+                        continue
+                    if filing.accession_number and filing.accession_number in seen_accessions:
+                        continue
+                    if filing.accession_number:
+                        seen_accessions.add(filing.accession_number)
+                    all_filings.append(filing)
+
+        all_filings.sort(key=lambda f: f.filing_date, reverse=True)
+        return all_filings[:count]
+
+    @staticmethod
+    def _parse_current_event_entry(entry: ET.Element) -> EDGARFiling | None:
+        """Parse a single Atom <entry> from the EDGAR 'getcurrent' feed into an EDGARFiling."""
+        title_el = entry.find("atom:title", _ATOM_NS)
+        summary_el = entry.find("atom:summary", _ATOM_NS)
+        title = (title_el.text or "") if title_el is not None else ""
+        summary = (summary_el.text or "") if summary_el is not None else ""
+
+        title_match = _TITLE_RE.match(title)
+        if not title_match:
+            return None
+
+        form = title_match.group("form").strip()
+        company_name = title_match.group("company").strip()
+        cik = title_match.group("cik").strip().zfill(10)
+
+        filed_match = _FILED_RE.search(summary)
+        accno_match = _ACCNO_RE.search(summary)
+        filing_date = filed_match.group("date") if filed_match else ""
+        accession_number = accno_match.group("acc") if accno_match else ""
+
+        # The Atom feed doesn't expose the primary document's filename, only the accession
+        # number, so document_url points at the filing's index directory rather than a
+        # specific primary document (matching get_company_filings when no doc is known).
+        acc_clean = accession_number.replace("-", "")
+        document_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/"
+            if acc_clean
+            else ""
+        )
+
+        return EDGARFiling(
+            accession_number=accession_number,
+            filing_type=form,
+            filing_date=filing_date,
+            company_name=company_name,
+            cik=cik,
+            description="",
+            document_url=document_url,
+        )
+
     # -----------------------------------------------------------------------
     # FtM conversion
     # -----------------------------------------------------------------------
@@ -264,6 +373,20 @@ class EDGARClient:
         entities = [self.filing_to_ftm(f) for f in filings]
         return {
             "cik": cik,
+            "filing_count": len(filings),
+            "entities": entities,
+        }
+
+    async def fetch_recent_filings_ftm(
+        self,
+        forms: list[str] | None = None,
+        count: int = 40,
+    ) -> dict[str, Any]:
+        """Fetch the real-time EDGAR firehose and return FtM entities."""
+        filings = await self.fetch_recent_filings(forms=forms, count=count)
+        entities = [self.filing_to_ftm(f) for f in filings]
+        return {
+            "forms": forms or ["all"],
             "filing_count": len(filings),
             "entities": entities,
         }

@@ -6,6 +6,7 @@ Supported formats:
   - Cytoscape JSON: For eventual web UI (Cytoscape.js / Sigma.js)
   - D3 JSON: For D3.js force-directed layouts
   - CSV: Node and edge tables for spreadsheet analysis
+  - JSON-LD: Linked-data graph (nodes AND edges as typed @graph objects)
 
 All exporters add visual attributes (node size, color, edge weight)
 pre-configured for investigative visualization.
@@ -210,6 +211,84 @@ class GraphExporter:
 
         logger.info("Exported CSV to %s (nodes + edges)", directory)
         return nodes_path, edges_path
+
+    # -- JSON-LD ---------------------------------------------------------------
+
+    # Pragmatic term mapping for @context: schema.org where a reasonable
+    # equivalent exists, and a project-local "ftm:" namespace for
+    # FollowTheMoney-specific concepts that don't have one. This is NOT a
+    # formally registered/versioned JSON-LD vocabulary — just a documented,
+    # convenient mapping so downstream consumers can resolve common terms
+    # without guessing.
+    _JSONLD_CONTEXT: dict[str, Any] = {
+        "@vocab": "https://schema.org/",
+        "schema": "https://schema.org/",
+        "ftm": "https://followthemoney.tech/schema/#",
+        "name": "schema:name",
+        "country": "schema:addressCountry",
+    }
+
+    # FtM entity schema -> schema.org @type. Anything not listed here falls
+    # back to "ftm:<schema>" (see to_jsonld).
+    _JSONLD_TYPE_MAP: dict[str, str] = {
+        "Person": "schema:Person",
+        "Company": "schema:Organization",
+        "LegalEntity": "schema:Organization",
+        "Organization": "schema:Organization",
+        "PublicBody": "schema:GovernmentOrganization",
+        "Address": "schema:PostalAddress",
+    }
+
+    def to_jsonld(self) -> dict[str, Any]:
+        """Export to a JSON-LD graph (``{"@context": ..., "@graph": [...]}``).
+
+        Nodes become typed linked-data objects — a schema.org ``@type``
+        where a mapping exists, else an ``"ftm:<Schema>"`` fallback.
+        Relationships are exported as their own typed ``@graph`` objects
+        too (FtM relationship entities are first-class, not bare links),
+        with source/target expressed as proper JSON-LD node references
+        (``{"@id": ...}``) rather than bare id strings.
+        """
+        graph_entries: list[dict[str, Any]] = []
+
+        # Nodes
+        for node_id, data in self._graph.nodes(data=True):
+            schema = data.get("schema", "Thing") or "Thing"
+            entry: dict[str, Any] = {
+                "@id": node_id,
+                "@type": self._JSONLD_TYPE_MAP.get(schema, f"ftm:{schema}"),
+                "name": data.get("name", node_id[:12]),
+            }
+
+            country = data.get("country", "")
+            if country:
+                entry["country"] = country
+
+            properties = data.get("properties", {})
+            if properties:
+                entry["ftm:properties"] = properties
+
+            graph_entries.append(entry)
+
+        # Edges — each relationship becomes its own typed @graph object
+        for i, (u, v, key, data) in enumerate(self._graph.edges(data=True, keys=True)):
+            edge_schema = data.get("schema", "") or "Relationship"
+            edge_entry: dict[str, Any] = {
+                "@id": f"urn:emet:edge:{u}:{v}:{i}",
+                "@type": f"ftm:{edge_schema}",
+                "ftm:source": {"@id": u},
+                "ftm:target": {"@id": v},
+                "label": data.get("label", ""),
+                "weight": data.get("weight", 0.5),
+            }
+
+            properties = data.get("properties", {})
+            if properties:
+                edge_entry["ftm:properties"] = properties
+
+            graph_entries.append(edge_entry)
+
+        return {"@context": self._JSONLD_CONTEXT, "@graph": graph_entries}
 
     # -- Helpers -------------------------------------------------------------
 
