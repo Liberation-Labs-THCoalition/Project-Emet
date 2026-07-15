@@ -2,13 +2,14 @@
 # OCCRP Demo — run Emet locally with Ollama, no cloud APIs.
 #
 # Prerequisites:
-#   docker compose -f docker-compose.yml -f docker-compose.occrp.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.field.yml up -d
 #   (wait for ollama-setup to pull models — ~10 minutes first time)
 #
 # This script runs three demo investigations showing different capabilities.
+# Uses the field deployment (Qwen3 14B + 8B, fits in 24GB RAM).
 
 set -e
-EMET="docker compose exec engine python -m emet.cli"
+EMET="docker compose -f docker-compose.yml -f docker-compose.field.yml exec engine python -m emet.cli"
 
 echo "============================================"
 echo "  EMET — Investigative Intelligence Demo"

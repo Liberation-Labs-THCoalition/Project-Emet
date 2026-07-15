@@ -132,11 +132,18 @@ class OllamaClient(LLMClient):
         if stop_sequences:
             payload["options"]["stop"] = stop_sequences
 
+        # Qwen3 thinking models: disable thinking for structured output
+        # (JSON parsing breaks if reasoning chain is in the response).
+        # Enable thinking only for free-form generation at low temperature.
+        if temperature < 0.3:
+            payload["think"] = False
+
         data = await self._post("/api/chat", payload)
 
-        # Parse Ollama response format
+        # Parse Ollama response — handle thinking models that split
+        # content across 'content' and 'thinking' fields
         message = data.get("message", {})
-        text = message.get("content", "")
+        text = message.get("content", "") or message.get("thinking", "")
         input_tokens = data.get("prompt_eval_count", 0)
         output_tokens = data.get("eval_count", 0)
         done_reason = data.get("done_reason", None)
