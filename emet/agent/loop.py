@@ -754,10 +754,11 @@ Rules:
         """Execute a tool call with safety observation and audit recording."""
         tool = action["tool"]
         args = action.get("args", {})
-        # LLMs sometimes return string args as single-element lists — coerce
+        # LLMs sometimes return string args as lists — coerce to strings
         for k, v in list(args.items()):
-            if isinstance(v, list) and len(v) == 1 and isinstance(v[0], str):
-                args[k] = v[0]
+            if isinstance(v, list):
+                strs = [str(x) for x in v if x]
+                args[k] = strs[0] if len(strs) == 1 else ", ".join(strs) if strs else ""
         import time
         t0 = time.monotonic()
 
