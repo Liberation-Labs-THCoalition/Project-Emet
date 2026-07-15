@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     # --- Ollama (local models — default) ---
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODELS: dict[str, str] = {
-        "fast": "llama3.2:3b",
-        "balanced": "mistral:7b",
-        "powerful": "deepseek-r1:14b",
+        "fast": "qwen3:8b",
+        "balanced": "qwen3:14b",
+        "powerful": "qwen3:14b",
     }
     OLLAMA_TIMEOUT: float = 120.0
 

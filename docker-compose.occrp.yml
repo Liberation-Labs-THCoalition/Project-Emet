@@ -1,0 +1,52 @@
+# OCCRP Demo — fully local, no cloud APIs.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.occrp.yml up -d
+#
+# This adds Ollama for local LLM inference and configures Emet to use it
+# as the primary (and only) LLM provider. No data leaves the machine.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          memory: 20G
+    restart: unless-stopped
+
+  ollama-setup:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    entrypoint: >
+      sh -c "
+        sleep 5 &&
+        ollama pull qwen3:14b &&
+        ollama pull qwen3:8b &&
+        echo 'Models ready'
+      "
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+  engine:
+    environment:
+      LLM_PROVIDER: ollama
+      LLM_FALLBACK_ENABLED: "false"
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODELS: '{"fast": "qwen3:8b", "balanced": "qwen3:14b", "powerful": "qwen3:14b"}'
+      ANTHROPIC_API_KEY: ""
+    depends_on:
+      - ollama
+
+  mcp:
+    environment:
+      LLM_PROVIDER: ollama
+      LLM_FALLBACK_ENABLED: "false"
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODELS: '{"fast": "qwen3:8b", "balanced": "qwen3:14b", "powerful": "qwen3:14b"}'
+
+volumes:
+  ollama_models:

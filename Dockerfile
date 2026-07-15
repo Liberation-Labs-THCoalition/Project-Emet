@@ -1,25 +1,45 @@
+# Emet — Investigative Intelligence Framework
+# Multi-stage build: dependencies first (cached), then application code.
+
 # --- Build stage ---
 FROM python:3.12-slim AS builder
 WORKDIR /build
-RUN pip install --no-cache-dir hatchling
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libffi-dev && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml .
-COPY kintsugi/ kintsugi/
-RUN pip wheel --no-cache-dir --wheel-dir /wheels .
+COPY emet/__init__.py emet/__init__.py
+RUN pip install --no-cache-dir --prefix=/install ".[prod]" 2>/dev/null || \
+    pip install --no-cache-dir --prefix=/install .
 
 # --- Runtime stage ---
 FROM python:3.12-slim
 WORKDIR /app
 
-RUN addgroup --system kintsugi && adduser --system --ingroup kintsugi kintsugi
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir /wheels/*.whl && rm -rf /wheels
+RUN addgroup --system emet && adduser --system --ingroup emet emet
 
-COPY alembic.ini .
+COPY --from=builder /install /usr/local
+
+COPY emet/ emet/
 COPY migrations/ migrations/
-COPY kintsugi/ kintsugi/
+COPY alembic.ini .
+COPY VALUES.json .
+COPY skills/ skills/
 
-USER kintsugi
-EXPOSE 8000
+RUN mkdir -p /app/investigations /app/data && \
+    chown -R emet:emet /app
 
-CMD ["uvicorn", "kintsugi.main:app", "--host", "0.0.0.0", "--port", "8000"]
+USER emet
+
+EXPOSE 8000 9400
+
+HEALTHCHECK --interval=30s --timeout=5s \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "emet.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
