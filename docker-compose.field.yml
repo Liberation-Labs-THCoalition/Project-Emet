@@ -1,8 +1,10 @@
-# OCCRP Demo — fully local, no cloud APIs.
-# Usage: docker compose -f docker-compose.yml -f docker-compose.occrp.yml up -d
+# EMET FIELD DEPLOYMENT — laptop / Mac Mini (24-32GB RAM)
 #
-# This adds Ollama for local LLM inference and configures Emet to use it
-# as the primary (and only) LLM provider. No data leaves the machine.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.field.yml up -d
+#
+# Models: Qwen3 14B (reasoning) + Qwen3 8B (extraction)
+# RAM: ~20GB for models + ~4GB for services
+# No data leaves the machine. No cloud APIs.
 
 services:
   ollama:
@@ -11,22 +13,19 @@ services:
       - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          memory: 20G
     restart: unless-stopped
 
   ollama-setup:
     image: ollama/ollama:latest
     depends_on:
       - ollama
+    restart: "no"
     entrypoint: >
       sh -c "
         sleep 5 &&
         ollama pull qwen3:14b &&
         ollama pull qwen3:8b &&
-        echo 'Models ready'
+        echo 'Field models ready — qwen3:14b (9GB) + qwen3:8b (6GB)'
       "
     environment:
       OLLAMA_HOST: http://ollama:11434
@@ -44,7 +43,6 @@ services:
   mcp:
     environment:
       LLM_PROVIDER: ollama
-      LLM_FALLBACK_ENABLED: "false"
       OLLAMA_HOST: http://ollama:11434
       OLLAMA_MODELS: '{"fast": "qwen3:8b", "balanced": "qwen3:14b", "powerful": "qwen3:14b"}'
 

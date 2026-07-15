@@ -1,0 +1,58 @@
+# EMET SERVER DEPLOYMENT — newsroom infrastructure (64GB+ RAM)
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
+#
+# Models: Qwen3.5 27B (deep investigative reasoning) + Qwen3 8B (extraction)
+# RAM: ~40GB for models + ~8GB for services + headroom
+# No data leaves the machine. No cloud APIs.
+#
+# Qwen3.5 27B is a dense 27.8B model — every parameter active on every
+# token. Validated on months of alignment research. Superior for multi-step
+# ownership chain reasoning, financial flow tracing, and report synthesis.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          memory: 48G
+    restart: unless-stopped
+
+  ollama-setup:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    restart: "no"
+    entrypoint: >
+      sh -c "
+        sleep 5 &&
+        ollama pull qwen3.5:27b &&
+        ollama pull qwen3:8b &&
+        echo 'Server models ready — qwen3.5:27b (17GB) + qwen3:8b (6GB)'
+      "
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+  engine:
+    environment:
+      LLM_PROVIDER: ollama
+      LLM_FALLBACK_ENABLED: "false"
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODELS: '{"fast": "qwen3:8b", "balanced": "qwen3.5:27b", "powerful": "qwen3.5:27b"}'
+      ANTHROPIC_API_KEY: ""
+    depends_on:
+      - ollama
+
+  mcp:
+    environment:
+      LLM_PROVIDER: ollama
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODELS: '{"fast": "qwen3:8b", "balanced": "qwen3.5:27b", "powerful": "qwen3.5:27b"}'
+
+volumes:
+  ollama_models:
