@@ -210,7 +210,7 @@ class InvestigationAgent:
 
             source = action.get("_decision_source", "?")
             session.record_reasoning(
-                f"Turn {session.turn_count} [{source}]: {action['reasoning']}"
+                f"Turn {session.turn_count} [{source}]: {action.get('reasoning', action.get('tool', '?'))}"
             )
 
             # --- Safety: pre-check ---

@@ -316,7 +316,9 @@ class ICIJClient:
         recon_query: dict[str, Any] = {"query": query, "limit": limit}
 
         # Add type constraint if specified
-        type_uri = _ICIJ_RECONCILE_TYPES.get(entity_type.lower(), "")
+        if isinstance(entity_type, list):
+            entity_type = entity_type[0] if entity_type else ""
+        type_uri = _ICIJ_RECONCILE_TYPES.get(str(entity_type).lower(), "")
         if type_uri:
             recon_query["type"] = type_uri
 

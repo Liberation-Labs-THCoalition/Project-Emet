@@ -222,7 +222,9 @@ def _normalize_name(name: str) -> str:
     suffixes so that "Deutsche Bank AG" and "Deutsche Bank" compare
     as identical.
     """
-    tokens = name.lower().strip().split()
+    if isinstance(name, list):
+        name = name[0] if name else ""
+    tokens = str(name).lower().strip().split()
     # Strip trailing corporate suffixes (may be multiple, e.g. "Pty Ltd")
     while tokens and tokens[-1].rstrip(".") in _CORPORATE_SUFFIXES:
         tokens.pop()

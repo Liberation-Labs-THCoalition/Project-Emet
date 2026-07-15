@@ -145,7 +145,8 @@ def main() -> None:
     except Exception as exc:
         logger.error("Error: %s", exc)
         if args.verbose:
-            raise
+            import traceback as _tb
+            _tb.print_exc()
         sys.exit(1)
 
 
