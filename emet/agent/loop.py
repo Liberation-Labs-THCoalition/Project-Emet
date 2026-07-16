@@ -838,6 +838,8 @@ Rules:
         #   check_alerts → "alerts" (change detection)
         #   ingest_documents → "documents" (extracted docs)
         #   generate_report → "report" (terminal, no entities)
+        if not isinstance(result, dict):
+            result = {"result": str(result)}
         entities = result.get("entities", [])
         matches = result.get("matches", [])
 
