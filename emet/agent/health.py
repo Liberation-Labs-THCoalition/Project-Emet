@@ -92,12 +92,9 @@ def _check_api_keys() -> list[CheckResult]:
     """Check which API keys are configured."""
     results = []
 
+    # The federated data sources are reported by _check_sources(), from the federation's own configuration.
     keys = {
-        "ALEPH_HOST + ALEPH_API_KEY": ("Aleph (core data platform)", ["ALEPH_HOST", "ALEPH_API_KEY"]),
-        "OPENSANCTIONS_API_KEY": ("OpenSanctions (sanctions screening)", ["OPENSANCTIONS_API_KEY"]),
         "ANTHROPIC_API_KEY": ("Anthropic Claude (LLM decisions)", ["ANTHROPIC_API_KEY"]),
-        "OPENCORPORATES_API_TOKEN": ("OpenCorporates (corporate registries)", ["OPENCORPORATES_API_TOKEN"]),
-        "COMPANIES_HOUSE_API_KEY": ("UK Companies House (free)", ["COMPANIES_HOUSE_API_KEY"]),
         "ETHERSCAN_API_KEY": ("Etherscan (blockchain, free)", ["ETHERSCAN_API_KEY"]),
     }
 
@@ -113,6 +110,56 @@ def _check_api_keys() -> list[CheckResult]:
                 suggestion=f"Set {label} in .env"
             ))
 
+    return results
+
+
+def _check_sources() -> list[CheckResult]:
+    """Which data sources an investigation queries right now, and how.
+
+    Read from the same FederationConfig.from_env() the federation runs on, so this can't drift from what an
+    investigation does (Vera's audit, 2026-10-14). A source without what it needs is switched off, never faked:
+    there is no sample data outside --demo, which says so when it's on.
+    """
+    from emet.ftm.external.federation import FederationConfig
+
+    cfg = FederationConfig.from_env()
+    env = os.environ.get
+    results = []
+
+    def row(name, enabled, live, off, reduced=""):
+        if not enabled:
+            results.append(CheckResult(name, "warning", "Off: " + off,
+                                       suggestion=("Set " + off.split("needs ", 1)[1] + " in .env") if "needs " in off
+                                       else ""))
+        elif reduced:
+            results.append(CheckResult(name, "info", "Live, reduced: " + reduced))
+        else:
+            results.append(CheckResult(name, "ok", "Live" + (f" ({live})" if live else "")))
+
+    row("Aleph", cfg.enable_aleph, "", "needs ALEPH_HOST and ALEPH_API_KEY")
+    row("OpenSanctions", cfg.enable_opensanctions, "", "needs OPENSANCTIONS_API_KEY")
+    row("OpenCorporates", cfg.enable_opencorporates, "", "needs OPENCORPORATES_API_TOKEN")
+    row("UK Companies House", cfg.enable_companies_house, "", "needs COMPANIES_HOUSE_API_KEY (free)")
+    row("ICIJ Offshore Leaks", cfg.enable_icij, "no key needed", "switched off in configuration")
+    row("GLEIF", cfg.enable_gleif, "no key needed", "switched off in configuration")
+    row("SEC EDGAR", cfg.enable_edgar, "no key needed", "switched off in configuration",
+        reduced="" if env("EDGAR_USER_AGENT") else
+        "the built-in User-Agent; SEC asks for your contact: set EDGAR_USER_AGENT to 'Name email'")
+    row("FEC", cfg.enable_fec, "", "switched off in configuration",
+        reduced="" if env("FEC_API_KEY") else "the public DEMO_KEY, which has a low rate limit; set FEC_API_KEY (free)")
+    row("CourtListener", cfg.enable_courtlistener, "", "switched off in configuration",
+        reduced="" if env("COURTLISTENER_API_TOKEN") else
+        "unauthenticated, at a lower rate limit; set COURTLISTENER_API_TOKEN (free)")
+
+    data_dir = Path(cfg.congress_config.resolved_data_dir())
+    if not cfg.enable_congress:
+        results.append(CheckResult("Congress trades", "warning", "Off: switched off in configuration"))
+    elif (data_dir / "transactions.json").is_file():
+        results.append(CheckResult("Congress trades", "ok", f"Live (local data in {data_dir})"))
+    else:
+        results.append(CheckResult(
+            "Congress trades", "warning", f"Returns nothing: no transactions.json in {data_dir}",
+            suggestion="Point EMET_CONGRESS_DATA_DIR at the congress scraper's output"))
     return results
 
 
@@ -247,6 +294,7 @@ class HealthCheck:
     @staticmethod
     def run(memory_dir: str = "") -> HealthReport:
         report = HealthReport()
+        report.checks.extend(_check_sources())
         report.checks.extend(_check_api_keys())
         report.checks.extend(_check_data_freshness(memory_dir))
         report.checks.extend(_check_disk())

@@ -238,7 +238,7 @@ DATABASE_URL=postgresql://ftm:ftm@localhost:5432/emet
 REDIS_URL=redis://localhost:6379/0
 ```
 
-No external services required for development — all tools return structured mock data when API keys are absent, and the test suite runs entirely on stubs.
+No external services are required for development: the test suite runs entirely on stubs. Outside the tests and `--demo`, a source without its key is switched off, never faked. `emet status` lists every source as live, live but reduced (FEC on the public DEMO_KEY, CourtListener unauthenticated, EDGAR with the built-in User-Agent), or off, and says which key turns it on. ICIJ, GLEIF, EDGAR, FEC and CourtListener need no key; Aleph, OpenSanctions, OpenCorporates and Companies House do; congress trades need the congress scraper's local data.
 
 ## Testing
 
